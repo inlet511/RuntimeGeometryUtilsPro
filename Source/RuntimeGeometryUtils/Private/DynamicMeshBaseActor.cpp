@@ -1,4 +1,4 @@
-#include "DynamicMeshBaseActor.h"
+﻿#include "DynamicMeshBaseActor.h"
 
 #include "Generators/SphereGenerator.h"
 #include "Generators/GridBoxMeshGenerator.h"
@@ -23,6 +23,10 @@
 
 #include "CleaningOps/HoleFillOp.h"
 #include "MeshBoundaryLoops.h"
+
+#include "DynamicMeshOBJWriter.h"
+
+using namespace UE::Geometry;
 
 // Sets default values
 ADynamicMeshBaseActor::ADynamicMeshBaseActor()
@@ -417,30 +421,6 @@ void ADynamicMeshBaseActor::CopyFromMesh(ADynamicMeshBaseActor* OtherMesh, bool 
 }
 
 
-void ADynamicMeshBaseActor::DilateMesh(float distance, float gridCellSize, float meshCellSize)
-{
-	TImplicitMorphology<FDynamicMesh3> Mopher;
-	FDynamicMesh3 SimplifyMesh;
-	SimplifyMesh.CompactCopy(SourceMesh, false, false, false, false);
-	FDynamicMeshAABBTree3 AABBTree(&SimplifyMesh, true);
-
-	Mopher.Source = &SimplifyMesh;
-	Mopher.SourceSpatial = &AABBTree;
-	Mopher.MorphologyOp = TImplicitMorphology<FDynamicMesh3>::EMorphologyOp::Dilate;
-	Mopher.Distance = distance;
-	Mopher.GridCellSize = gridCellSize;
-	Mopher.MeshCellSize = meshCellSize;
-
-	FDynamicMesh3 NewMesh(&Mopher.Generate());
-	NewMesh.EnableAttributes();
-	RecomputeNormals(NewMesh);
-
-	EditMesh([&](FDynamicMesh3& MeshToUpdate) {
-
-		MeshToUpdate = MoveTemp(NewMesh);
-		});
-}
-
 void ADynamicMeshBaseActor::SolidifyMesh(int VoxelResolution, float WindingThreshold)
 {
 	if (MeshAABBTree.IsValid(true) == false)
@@ -500,13 +480,77 @@ void ADynamicMeshBaseActor::SimplifyMeshToTriCount(int32 TargetTriangleCount)
 }
 
 
-void ADynamicMeshBaseActor::SimplifyMesh(int32 percent)
+void ADynamicMeshBaseActor::SimplifyMesh(ESimplifyTargetType simplifyTargetType, int32 percent,int32 targetTriangleCount)
 {
+	if (MeshAABBTree.IsValid(true) == false)
+	{
+		MeshAABBTree.Build();
+	}
+	if (FastWinding->IsBuilt() == false)
+	{
+		FastWinding->Build();
+	}
 
+	// Prepare DynamicMesh and AABBTree
+	TSharedPtr<FDynamicMesh3> MeshCopy = MakeShared<FDynamicMesh3>();
+	MeshCopy->Copy(SourceMesh);
+	TSharedPtr<FDynamicMeshAABBTree3, ESPMode::ThreadSafe>  AABBTreePtr  = MakeShared<FDynamicMeshAABBTree3, ESPMode::ThreadSafe>(MeshCopy.Get(), true);
 
+	
+	// Prepare MeshDescription
+	//TSharedPtr<FMeshDescription, ESPMode::ThreadSafe> OriginalMeshDescription = MakeShared<FMeshDescription, ESPMode::ThreadSafe>();
+	//FMeshDescriptionToDynamicMesh Converter;
+	//Converter.Convert(OriginalMeshDescription.Get(), *MeshCopy);
 
+	// Simplifier Setup
+	FSimplifyMeshOp Simplifier;
+	Simplifier.OriginalMesh = MeshCopy;
+	Simplifier.OriginalMeshSpatial = AABBTreePtr;
+
+	//Simplifier.OriginalMeshDescription = OriginalMeshDescription;
+	Simplifier.TargetMode = simplifyTargetType;
+	Simplifier.TargetPercentage = percent;
+	Simplifier.TargetCount = targetTriangleCount;
+
+	// 如果这个选项要选择UEStandard, 则需要MeshDescription, 但是目前启用MeshDescription会报错
+	Simplifier.SimplifierType = ESimplifyType::Attribute;
+	Simplifier.SetTransform(this->GetTransform());
+
+	Simplifier.CalculateResult(nullptr);
+
+	TUniquePtr<FDynamicMesh3> NewResultMesh = Simplifier.ExtractResult();
+	FDynamicMesh3* NewResultMeshPtr = NewResultMesh.Release();
+
+	EditMesh([&](FDynamicMesh3& MeshToUpdate)
+		{
+			MeshToUpdate.CompactCopy(*NewResultMeshPtr);
+		});
 }
 
+
+void ADynamicMeshBaseActor::DilateMesh(float distance, float gridCellSize, float meshCellSize)
+{
+	TImplicitMorphology<FDynamicMesh3> Mopher;
+	FDynamicMesh3 SimplifyMesh;
+	SimplifyMesh.CompactCopy(SourceMesh, false, false, false, false);
+	FDynamicMeshAABBTree3 AABBTree(&SimplifyMesh, true);
+
+	Mopher.Source = &SimplifyMesh;
+	Mopher.SourceSpatial = &AABBTree;
+	Mopher.MorphologyOp = TImplicitMorphology<FDynamicMesh3>::EMorphologyOp::Dilate;
+	Mopher.Distance = distance;
+	Mopher.GridCellSize = gridCellSize;
+	Mopher.MeshCellSize = meshCellSize;
+
+	FDynamicMesh3 NewMesh(&Mopher.Generate());
+	NewMesh.EnableAttributes();
+	RecomputeNormals(NewMesh);
+
+	EditMesh([&](FDynamicMesh3& MeshToUpdate) {
+
+		MeshToUpdate = MoveTemp(NewMesh);
+		});
+}
 
 void ADynamicMeshBaseActor::FillHole(int32& NumFilledHoles, int32& NumFailedHoleFills)
 {
@@ -545,4 +589,9 @@ void ADynamicMeshBaseActor::FillHole(int32& NumFilledHoles, int32& NumFailedHole
 		{
 			MeshToUpdate.CompactCopy(*NewResultMeshPtr);
 		});
+}
+
+void ADynamicMeshBaseActor::WriteObj(const FString OutputPath)
+{
+	RTGUtils::WriteOBJMesh(OutputPath, SourceMesh, true);
 }

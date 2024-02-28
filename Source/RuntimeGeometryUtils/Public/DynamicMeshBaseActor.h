@@ -7,7 +7,6 @@
 #include "Components/DynamicMeshComponent.h"
 #include "Spatial/FastWinding.h"
 #include "CleaningOps/SimplifyMeshOp.h"
-#include "SimplifyMeshTool.h"
 #include "DynamicMeshBaseActor.generated.h"
 
 using namespace UE::Geometry;
@@ -351,8 +350,7 @@ public:
 	// Mesh Modification API
 	//
 public:
-	UFUNCTION(BlueprintCallable)
-	void DilateMesh(float distance = 10.0f, float gridCellSize = 1.0f, float meshCellSize = 1.0f);
+
 
 	/** Compute the specified a Boolean operation with OtherMesh (transformed to world space) and store in our SourceMesh */
 	UFUNCTION(BlueprintCallable)
@@ -374,16 +372,27 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SolidifyMesh(int VoxelResolution = 64, float WindingThreshold = 0.5);
 
-	/** Simplify current SourceMesh to the target triangle count */
+	/** Simplify current SourceMesh to the target triangle count 
+	*   直接使用了 FQEMSimplification 作为 Simplifier, 详见 MeshSimplification.h 	*/
 	UFUNCTION(BlueprintCallable)
 	void SimplifyMeshToTriCount(int32 TargetTriangleCount);
 
-	// Custom Functions Added by AnNing
+	/**  Custom Functions ***********************************************************************/
+
+	/**  使用了 SimplifyMeshOp, 它包含几种不同的Simplifier，FQEMSimplification 只是其中一种
+	*	 注意，如果要使用ESimplifyType::UEStandard, 则必须提供 OriginalMeshDescription	*/
 	UFUNCTION(BlueprintCallable)
-	void SimplifyMesh(int32 percent);
+	void SimplifyMesh(ESimplifyTargetType simplifyTargetType, int32 percent, int32 targetTriangleCount);
+
+	UFUNCTION(BlueprintCallable)
+	void DilateMesh(float distance = 10.0f, float gridCellSize = 1.0f, float meshCellSize = 1.0f);
 
 	UFUNCTION(BlueprintCallable)
 	void FillHole(int32& NumFilledHoles, int32& NumFailedHoleFills);
+
+	UFUNCTION(BlueprintCallable)
+	void WriteObj(const FString OutputPath);
+	// Custom Functions End ***********************************
 
 
 
@@ -391,9 +400,4 @@ public:
 	/** @return number of triangles in current SourceMesh */
 	UFUNCTION(BlueprintCallable)
 	int GetTriangleCount();
-
-	TSharedPtr<FMeshDescription, ESPMode::ThreadSafe> OriginalMeshDescription;
-
-	UPROPERTY()
-	TObjectPtr<USimplifyMeshToolProperties> SimplifyProperties;
 };
