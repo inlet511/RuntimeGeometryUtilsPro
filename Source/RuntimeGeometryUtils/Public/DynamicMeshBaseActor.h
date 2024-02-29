@@ -372,7 +372,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SolidifyMesh(int VoxelResolution = 64, float WindingThreshold = 0.5);
 
-	/** Simplify current SourceMesh to the target triangle count 
+	/** Simplify current SourceMesh to the target triangle count
 	*   直接使用了 FQEMSimplification 作为 Simplifier, 详见 MeshSimplification.h 	*/
 	UFUNCTION(BlueprintCallable)
 	void SimplifyMeshToTriCount(int32 TargetTriangleCount);
@@ -380,7 +380,7 @@ public:
 	/**  Custom Functions ***********************************************************************/
 
 	/**  使用了 SimplifyMeshOp, 它包含几种不同的Simplifier，FQEMSimplification 只是其中一种
-	*	 注意，如果要使用ESimplifyType::UEStandard, 则必须提供 OriginalMeshDescription	*/
+	*	 注意，如果要使用ESimplifyType::UEStandard, 则必须提供 OriginalMeshDescription以及MeshReduction	*/
 	UFUNCTION(BlueprintCallable)
 	void SimplifyMesh(ESimplifyTargetType simplifyTargetType, int32 percent, int32 targetTriangleCount);
 

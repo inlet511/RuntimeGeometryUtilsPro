@@ -14,6 +14,8 @@
 
 #include "DynamicMeshOBJReader.h"
 #include "MeshDescriptionToDynamicMesh.h"
+#include "DynamicMeshToMeshDescription.h"
+#include "StaticMeshAttributes.h"
 
 #include "Modules/ModuleManager.h"
 #include "IMeshReductionManagerModule.h"
@@ -480,7 +482,7 @@ void ADynamicMeshBaseActor::SimplifyMeshToTriCount(int32 TargetTriangleCount)
 }
 
 
-void ADynamicMeshBaseActor::SimplifyMesh(ESimplifyTargetType simplifyTargetType, int32 percent,int32 targetTriangleCount)
+void ADynamicMeshBaseActor::SimplifyMesh(ESimplifyTargetType simplifyTargetType, int32 percent, int32 targetTriangleCount)
 {
 	if (MeshAABBTree.IsValid(true) == false)
 	{
@@ -494,27 +496,38 @@ void ADynamicMeshBaseActor::SimplifyMesh(ESimplifyTargetType simplifyTargetType,
 	// Prepare DynamicMesh and AABBTree
 	TSharedPtr<FDynamicMesh3> MeshCopy = MakeShared<FDynamicMesh3>();
 	MeshCopy->Copy(SourceMesh);
-	TSharedPtr<FDynamicMeshAABBTree3, ESPMode::ThreadSafe>  AABBTreePtr  = MakeShared<FDynamicMeshAABBTree3, ESPMode::ThreadSafe>(MeshCopy.Get(), true);
+	TSharedPtr<FDynamicMeshAABBTree3, ESPMode::ThreadSafe>  AABBTreePtr = MakeShared<FDynamicMeshAABBTree3, ESPMode::ThreadSafe>(MeshCopy.Get(), true);
 
-	
+
+	MeshCopy->EnableTriangleGroups();
+	MeshCopy->EnableAttributes();
+
 	// Prepare MeshDescription
-	//TSharedPtr<FMeshDescription, ESPMode::ThreadSafe> OriginalMeshDescription = MakeShared<FMeshDescription, ESPMode::ThreadSafe>();
-	//FMeshDescriptionToDynamicMesh Converter;
-	//Converter.Convert(OriginalMeshDescription.Get(), *MeshCopy);
+	TSharedPtr<FMeshDescription, ESPMode::ThreadSafe> OriginalMeshDescription = MakeShared<FMeshDescription, ESPMode::ThreadSafe>();
+	FStaticMeshAttributes Attributes(*OriginalMeshDescription);
+	Attributes.Register();
+	FDynamicMeshToMeshDescription Converter;
+	Converter.Convert(MeshCopy.Get(), *OriginalMeshDescription);
+
 
 	// Simplifier Setup
 	FSimplifyMeshOp Simplifier;
 	Simplifier.OriginalMesh = MeshCopy;
 	Simplifier.OriginalMeshSpatial = AABBTreePtr;
 
-	//Simplifier.OriginalMeshDescription = OriginalMeshDescription;
+	Simplifier.OriginalMeshDescription = OriginalMeshDescription;
 	Simplifier.TargetMode = simplifyTargetType;
 	Simplifier.TargetPercentage = percent;
 	Simplifier.TargetCount = targetTriangleCount;
 
-	// 如果这个选项要选择UEStandard, 则需要MeshDescription, 但是目前启用MeshDescription会报错
+	// 如果这个选项要选择UEStandard, 则需要MeshDescription,以及MeshReduction
+	// MeshDescription 已经正确运行
 	Simplifier.SimplifierType = ESimplifyType::Attribute;
 	Simplifier.SetTransform(this->GetTransform());
+
+
+	IMeshReductionManagerModule& MeshReductionModule = FModuleManager::Get().LoadModuleChecked<IMeshReductionManagerModule>("MeshReductionInterface");
+	Simplifier.MeshReduction = MeshReductionModule.GetStaticMeshReductionInterface();
 
 	Simplifier.CalculateResult(nullptr);
 

@@ -45,6 +45,7 @@ public class RuntimeGeometryUtils : ModuleRules
                 "StaticMeshDescription",
                 "GeometryAlgorithms",
                 "MeshConversion",
+                "StaticMeshDescription",
                 "ModelingOperators",
                 "ModelingOperatorsEditorOnly",
                 "MeshModelingToolsEditorOnlyExp"
