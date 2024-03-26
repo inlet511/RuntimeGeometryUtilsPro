@@ -27,6 +27,7 @@
 #include "MeshBoundaryLoops.h"
 
 #include "DynamicMeshOBJWriter.h"
+#include "FBXReader.h"
 
 using namespace UE::Geometry;
 
@@ -167,13 +168,17 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 		}
 
 		MeshOut = FDynamicMesh3();
-		if (!RTGUtils::ReadOBJMesh(UsePath, MeshOut, true, true, true, bReverseOrientation))
+		//if (!RTGUtils::ReadOBJMesh(UsePath, MeshOut, true, true, true, bReverseOrientation))
+		//{
+		//	UE_LOG(LogTemp, Warning, TEXT("Error reading mesh file %s"), *UsePath);
+		//	FSphereGenerator SphereGen;
+		//	SphereGen.NumPhi = SphereGen.NumTheta = 8;
+		//	SphereGen.Radius = this->MinimumRadius;
+		//	MeshOut.Copy(&SphereGen.Generate());
+		//}
+		if (!RTGUtils::ReadFBXMesh(UsePath, MeshOut, true, true, true, bReverseOrientation))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Error reading mesh file %s"), *UsePath);
-			FSphereGenerator SphereGen;
-			SphereGen.NumPhi = SphereGen.NumTheta = 8;
-			SphereGen.Radius = this->MinimumRadius;
-			MeshOut.Copy(&SphereGen.Generate());
+
 		}
 
 		if (bCenterPivot)

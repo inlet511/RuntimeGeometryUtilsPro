@@ -48,7 +48,8 @@ public class RuntimeGeometryUtils : ModuleRules
                 "StaticMeshDescription",
                 "ModelingOperators",
                 "ModelingOperatorsEditorOnly",
-                "MeshModelingToolsEditorOnlyExp"
+                "MeshModelingToolsEditorOnlyExp",
+                "FBX"
 				// ... add private dependencies that you statically link with here ...	
 			}
             );
