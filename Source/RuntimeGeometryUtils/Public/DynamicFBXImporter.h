@@ -1,11 +1,41 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+THIRD_PARTY_INCLUDES_START
+#include <fbxsdk.h>
+THIRD_PARTY_INCLUDES_END
+
 #include "DynamicMesh/DynamicMesh3.h"
+#include "DynamicFBXImporter.generated.h"
 
 
-namespace RTGUtils
+UCLASS()
+class RUNTIMEGEOMETRYUTILS_API ADynamicFBXImporter : public AActor
 {
+	GENERATED_BODY()
+
+public:
+
+	ADynamicFBXImporter();
+	~ADynamicFBXImporter();
+
+	UPROPERTY()
+	AActor* SpawnedActor;
+
+	UPROPERTY()
+	TArray<class UDynamicMeshComponent*> MeshComponents;
+
+	void CreateMesh(FbxNode* node, FDynamicMesh3& MeshOut);
+
+	FbxManager* SdkManager;
+	FbxIOSettings* ios;
+	FbxImporter* importer;
+
+public:
+
+	void IterateNode(FbxNode* node);
+
 	/**
 	 * Read mesh in FBX format from the given path into a FDynamicMesh3.
 	 * @param bNormals should normals be imported into primary normal attribute overlay
@@ -14,14 +44,12 @@ namespace RTGUtils
 	 * @param bReverseOrientation if true, mesh orientation/normals are flipped. You probably want this for importing to UE4 from other apps.
 	 * @param return false if read failed
 	 */
-	RUNTIMEGEOMETRYUTILS_API bool ReadFBXMesh(
+	UFUNCTION(BlueprintCallable)
+	bool ReadFBXMesh(
 		const FString& Path,
-		FDynamicMesh3& MeshOut,
 		bool bNormals,
 		bool bTexCoords,
 		bool bVertexColors,
 		bool bReverseOrientation);
 
-
-}
-
+};
