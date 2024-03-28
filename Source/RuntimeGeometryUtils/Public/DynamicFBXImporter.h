@@ -20,13 +20,13 @@ public:
 	ADynamicFBXImporter();
 	~ADynamicFBXImporter();
 
-	UPROPERTY()
-	AActor* SpawnedActor;
+	UPROPERTY(VisibleAnywhere,BlueprintReadWrite)
+	class AImportedFBXActor* SpawnedActor;
 
 	UPROPERTY()
 	TArray<class UDynamicMeshComponent*> MeshComponents;
 
-	void CreateMesh(FbxNode* node, FDynamicMesh3& MeshOut);
+	void BuildMesh(FbxNode* node, UE::Geometry::FDynamicMesh3& MeshOut);
 
 	FbxManager* SdkManager;
 	FbxIOSettings* ios;
