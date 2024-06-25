@@ -609,6 +609,7 @@ void ADynamicMeshBaseActor::FillHole(int32& NumFilledHoles, int32& NumFailedHole
 		});
 }
 
+
 void ADynamicMeshBaseActor::WriteObj(const FString OutputPath)
 {
 	RTGUtils::WriteOBJMesh(OutputPath, SourceMesh, true);
