@@ -28,6 +28,7 @@
 
 #include "DynamicMeshOBJWriter.h"
 #include "DynamicFBXImporter.h"
+#include "..\Public\Generators\ConvexHullGenerator.h"
 
 using namespace UE::Geometry;
 
@@ -147,7 +148,7 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			SphereGen.Radius = UseRadius;
 			MeshOut.Copy(&SphereGen.Generate());
 		}
-		else
+		else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::Box)
 		{
 			FGridBoxMeshGenerator BoxGen;
 			int TessLevel = FMath::Clamp(this->TessellationLevel, 2, 50);
@@ -156,7 +157,15 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			BoxExtents.Z *= BoxDepthRatio;
 			BoxGen.Box = FOrientedBox3d(FVector3d::Zero(), BoxExtents);
 			MeshOut.Copy(&BoxGen.Generate());
+		}else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::TriangulateConvexHull)
+		{
+			if(RandomPoints.Num()<3)
+				return;
+			FConvexHullGenerator ConvexHullGenerator;
+			ConvexHullGenerator.InputVertices = RandomPoints;
+			MeshOut.Copy(&ConvexHullGenerator.Generate());
 		}
+		
 
 	}
 	else if (SourceType == EDynamicMeshActorSourceType::ImportedMesh)
@@ -204,10 +213,6 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 
 	RecomputeNormals(MeshOut);
 }
-
-
-
-
 
 
 

@@ -42,7 +42,8 @@ UENUM()
 enum class EDynamicMeshActorPrimitiveType : uint8
 {
 	Sphere,
-	Box
+	Box,
+	TriangulateConvexHull
 };
 
 
@@ -172,6 +173,13 @@ public:
 	/** Speed of variation of VariableRadius, only has an effect when bRegenerateOnTick is true */
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (UIMin = 0, EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
 	float PulseSpeed = 3.0;
+
+	//
+	// Parameters for SourceType = Primitive.TriangulateConvexHull
+	//
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite ,Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::TriangulateConvexHull"))
+	TArray<FVector2f> RandomPoints;
 
 	//
 	// Parameters for SourceType = FromStaticMesh

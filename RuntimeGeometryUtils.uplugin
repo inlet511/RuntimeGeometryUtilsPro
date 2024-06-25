@@ -31,6 +31,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "MeshModelingToolsetExp",
+			"Enabled": true
+		},
+		{
 			"Name": "ProceduralMeshComponent",
 			"Enabled": true
 		}
