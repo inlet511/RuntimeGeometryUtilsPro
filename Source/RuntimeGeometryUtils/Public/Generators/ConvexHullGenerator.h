@@ -11,15 +11,23 @@
 class RUNTIMEGEOMETRYUTILS_API FConvexHullGenerator : UE::Geometry::FMeshShapeGenerator
 {
 public:
-	FConvexHullGenerator();
-	~FConvexHullGenerator();
-
 	// 在一个平面上的一组点
-	TArray<FVector2f> OriginalVertices;
+	UPROPERTY(VisibleAnywhere,BlueprintReadWrite, Category="Vertices")
+	TArray<FVector2f> InputVertices;
 
+	void FindConvexHull();
+	void TriangulateConvexHull();
 	void GenerateVertices();
-	void GenerateUV();
 	void OutputTriangles();
 	
+	
 	virtual FMeshShapeGenerator& Generate() override;
+
+	// ConvexHull 边界点数量
+	int32 ConvexHullPointCount;
+	
+	// ConvexHull 顶点的索引
+	TArray<int32> ConvexHullIndices;
+	
+	int32 TriangleCount;
 };

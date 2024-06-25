@@ -42,7 +42,8 @@ UENUM()
 enum class EDynamicMeshActorPrimitiveType : uint8
 {
 	Sphere,
-	Box
+	Box,
+	TriangulateConvexHull
 };
 
 
@@ -174,6 +175,13 @@ public:
 	float PulseSpeed = 3.0;
 
 	//
+	// Parameters for SourceType = Primitive.TriangulateConvexHull
+	//
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite ,Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::TriangulateConvexHull"))
+	TArray<FVector2f> RandomPoints;
+
+	//
 	// Parameters for SourceType = FromStaticMesh
 	//
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (UIMin = 0, EditCondition = "SourceType == EDynamicMeshActorSourceType::FromStaticMesh", EditConditionHides))
@@ -210,6 +218,9 @@ public:
 	 */
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnMeshModified, ADynamicMeshBaseActor*);
 	FOnMeshModified OnMeshModified;
+
+	UFUNCTION(BlueprintCallable, Category="DynamicMesh")
+	void ForceRegenerate();
 
 protected:
 
