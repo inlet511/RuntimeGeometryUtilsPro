@@ -25,7 +25,7 @@ public:
 	int32 VertexCount;
 
 	// ConvexHull三角形 - 索引存储的是 ConvexHullVertices的索引
-	TArray<UE::Geometry::FIndex3i> ConvexHullTriangles;
+	TArray<UE::Geometry::FIndex3i> Triangles2D;
 	
 	// ConvexHull的顶点
 	TArray<FVector2f> ConvexHullVertices;

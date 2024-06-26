@@ -1,7 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "PointTriangleRelation.h"
+#include "../Public/Algorithms/PointTriangleRelation.h"
 
 
 bool PointTriangleRelation::IsPointInTriangle2D(FVector2f& TestPoint, FVector2f& PointA,  FVector2f& PointB, FVector2f& PointC)
