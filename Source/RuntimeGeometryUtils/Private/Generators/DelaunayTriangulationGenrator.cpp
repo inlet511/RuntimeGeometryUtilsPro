@@ -1,14 +1,14 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "../../Public/Generators/RandomPointsMeshGenerator.h"
-
+#include "../../Public/Generators/DelaunayTriangulationGenrator.h"
 #include "CompGeom/ConvexHull2.h"
 #include "CompGeom/PolygonTriangulation.h"
 #include "../../Public/Algorithms/PointTriangleRelation.h"
+#include "CompGeom/Delaunay2.h"
 
-bool FRandomPointsMeshGenerator::GenerateVertices()
-{	
+bool DelaunayTriangulationGenrator::GenerateVertices()
+{
 	VertexCount = InputVertices.Num();
 	if(VertexCount <=3)
 		return false;
@@ -53,7 +53,7 @@ bool FRandomPointsMeshGenerator::GenerateVertices()
 	return true;
 }
 
-void FRandomPointsMeshGenerator::Triangulate()
+void DelaunayTriangulationGenrator::Triangulate()
 {
 	// 注意这里Triangles中的索引是ConvexHullVertices中的索引，不是InputVertices的索引
 	PolygonTriangulation::TriangulateSimplePolygon(ConvexHullVertices,Triangles2D);
@@ -92,24 +92,50 @@ void FRandomPointsMeshGenerator::Triangulate()
 		}
 	}
 
-
-	// 设置Triangle其他几个数组
-	int32 TriangleCount = Triangles2D.Num();
-	Triangles.SetNum(TriangleCount);
-	TriangleUVs.SetNum(TriangleCount);
-	TriangleNormals.SetNum(TriangleCount);
-	TrianglePolygonIDs.SetNum(TriangleCount);
-
-	for(int32 i = 0; i<TriangleCount; ++i)
+	// 德洛内
+	UE::Geometry::FDelaunay2 Delaunay;
+	bool bSuccess = Delaunay.Triangulate(InputVertices);
+	TArray<UE::Geometry::FIndex3i> OutTriangles;
+	if(bSuccess)
 	{
-		SetTriangle(i, Triangles2D[i]);
-		SetTriangleUVs(i,Triangles[i]);
+		OutTriangles = Delaunay.GetTriangles();		
+	}
+	
+	Vertices.SetNum(VertexCount);
+	UVs.SetNum(VertexCount);
+	UVParentVertex.SetNum(VertexCount);
+	Normals.SetNum(VertexCount);
+	NormalParentVertex.SetNum(VertexCount);
+
+	for(int32 i = 0 ; i<VertexCount ; ++i)
+	{
+		Vertices[i] = FVector3d(InputVertices[i].X, InputVertices[i].Y, 20);
+		UVs[i] = FVector2f(InputVertices[i].X / 1000.0f,InputVertices[i].Y/1000.0f);
+		UVParentVertex[i] = i;
+		Normals[i] = FVector3f::UpVector;
+		NormalParentVertex[i] = i;		
+	}
+
+	int32 TrianglesCount = OutTriangles.Num();
+	Triangles.SetNum(TrianglesCount);
+	TriangleUVs.SetNum(TrianglesCount);
+	TriangleNormals.SetNum(TrianglesCount);
+	TrianglePolygonIDs.SetNum(TrianglesCount);
+
+	
+	for(int32 i = 0 ; i< OutTriangles.Num() ; ++i)
+	{
+		Triangles[i]  = UE::Geometry::FIndex3i(OutTriangles[i].A,OutTriangles[i].B,OutTriangles[i].C);
+		SetTriangle(i, UE::Geometry::FIndex3i(OutTriangles[i].A,OutTriangles[i].B,OutTriangles[i].C));
 		SetTriangleNormals(i, Triangles[i]);
+		SetTriangleUVs(i,Triangles[i]);
 		SetTrianglePolygon(i,0);
 	}
+	
+	
 }
 
-UE::Geometry::FMeshShapeGenerator& FRandomPointsMeshGenerator::Generate()
+UE::Geometry::FMeshShapeGenerator& DelaunayTriangulationGenrator::Generate()
 {
 	if(GenerateVertices())
 	{

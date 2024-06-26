@@ -8,10 +8,9 @@
 /**
  * 
  */
-class RUNTIMEGEOMETRYUTILS_API FRandomPointsMeshGenerator : public UE::Geometry::FMeshShapeGenerator
+class RUNTIMEGEOMETRYUTILS_API DelaunayTriangulationGenrator: public UE::Geometry::FMeshShapeGenerator
 {
 public:
-
 	UPROPERTY(VisibleAnywhere,BlueprintReadWrite, Category="Vertices")
 	TArray<FVector2f> InputVertices;
 
@@ -32,5 +31,4 @@ public:
 
 	// ConvexHull 顶点的索引
 	TArray<int32> ConvexHullIndices;
-	
 };
