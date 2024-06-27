@@ -30,6 +30,7 @@
 #include "DynamicFBXImporter.h"
 #include "../Public/Generators/ConvexHullGenerator.h"
 #include "../Public/Generators/RandomPointsMeshGenerator.h"
+#include "../Public/Generators/FDelaunayGenrator.h"
 
 using namespace UE::Geometry;
 
@@ -177,6 +178,13 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			FRandomPointsMeshGenerator RandomPointsMeshGenerator;
 			RandomPointsMeshGenerator.InputVertices = RandomPoints;
 			MeshOut.Copy(&RandomPointsMeshGenerator.Generate());
+		}else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::Delaunay)
+		{
+			if(RandomPoints.Num() < 3)
+				return;
+			FDelaunayGenrator DelaunayGenrator;
+			DelaunayGenrator.InputVertices = RandomPoints;
+			MeshOut.Copy(&DelaunayGenrator.Generate());
 		}
 		
 

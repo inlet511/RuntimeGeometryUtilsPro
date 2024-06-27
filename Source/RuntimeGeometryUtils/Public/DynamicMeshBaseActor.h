@@ -44,7 +44,8 @@ enum class EDynamicMeshActorPrimitiveType : uint8
 	Sphere,
 	Box,
 	ConvexHull,
-	RandomPoints
+	RandomPoints,
+	Delaunay
 };
 
 
