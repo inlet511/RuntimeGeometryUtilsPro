@@ -405,6 +405,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void WriteObj(const FString OutputPath);
+
+	UFUNCTION(BlueprintCallable)
+	void PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, bool bFillCutHole,bool bFillSpans = false, bool bKeepBothHalves = true);
 	// Custom Functions End ***********************************
 
 

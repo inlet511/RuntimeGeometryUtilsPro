@@ -31,6 +31,7 @@
 #include "../Public/Generators/ConvexHullGenerator.h"
 #include "../Public/Generators/RandomPointsMeshGenerator.h"
 #include "../Public/Generators/FDelaunayGenrator.h"
+#include "CuttingOps/PlaneCutOp.h"
 
 using namespace UE::Geometry;
 
@@ -639,4 +640,47 @@ void ADynamicMeshBaseActor::FillHole(int32& NumFilledHoles, int32& NumFailedHole
 void ADynamicMeshBaseActor::WriteObj(const FString OutputPath)
 {
 	RTGUtils::WriteOBJMesh(OutputPath, SourceMesh, true);
+}
+
+void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, bool bFillCutHole, bool bFillSpans, bool bKeepBothHalves)
+{
+	if (!MeshAABBTree.IsValid(true))
+	{
+		MeshAABBTree.Build();
+	}
+	if (!FastWinding->IsBuilt())
+	{
+		FastWinding->Build();
+	}
+
+	if (ensure(OtherMeshActor) == false) return;
+
+	FTransform3d ActorToWorld(GetActorTransform());
+	FTransform3d OtherToWorld(OtherMeshActor->GetActorTransform());
+
+	FDynamicMesh3 OtherMesh;
+	OtherMeshActor->GetMeshCopy(OtherMesh);
+	MeshTransforms::ApplyTransform(OtherMesh, OtherToWorld);
+	MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
+
+	EditMesh([&](FDynamicMesh3& MeshToUpdate)
+	{
+		FPlaneCutOp PlaneCut;
+		PlaneCut.LocalPlaneOrigin = PlaneOrigin;
+		PlaneCut.LocalPlaneNormal = PlaneNormal;
+		PlaneCut.bFillCutHole = bFillCutHole;
+		PlaneCut.bFillSpans = bFillSpans;
+		PlaneCut.bKeepBothHalves = bKeepBothHalves;
+		PlaneCut.OriginalMesh = MakeShareable(&MeshToUpdate);
+
+		FProgressCancel ProgressCancel;
+		PlaneCut.CalculateResult(&ProgressCancel);
+		
+		TUniquePtr<FDynamicMesh3> OtherHalfMesh = PlaneCut.ExtractResult();
+		//OtherMesh = MoveTemp(*OtherHalfMesh);
+		OtherMeshActor->EditMesh([&](FDynamicMesh3& Mesh)
+		{
+			Mesh.Copy(OtherMesh);
+		});
+	});	
 }
