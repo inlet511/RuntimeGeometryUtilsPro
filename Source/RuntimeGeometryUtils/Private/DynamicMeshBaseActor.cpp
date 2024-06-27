@@ -28,6 +28,7 @@
 
 #include "DynamicMeshOBJWriter.h"
 #include "DynamicFBXImporter.h"
+#include "MeshOpPreviewHelpers.h"
 #include "../Public/Generators/ConvexHullGenerator.h"
 #include "../Public/Generators/RandomPointsMeshGenerator.h"
 #include "../Public/Generators/FDelaunayGenrator.h"
@@ -653,34 +654,47 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 		FastWinding->Build();
 	}
 
-	if (ensure(OtherMeshActor) == false) return;
+	// if (ensure(OtherMeshActor) == false) return;
 
-	FTransform3d ActorToWorld(GetActorTransform());
-	FTransform3d OtherToWorld(OtherMeshActor->GetActorTransform());
+	// FTransform3d ActorToWorld(GetActorTransform());
+	// FTransform3d OtherToWorld(OtherMeshActor->GetActorTransform());
+	//
+	// FDynamicMesh3 OtherMesh;
+	// OtherMeshActor->GetMeshCopy(OtherMesh);
+	// MeshTransforms::ApplyTransform(OtherMesh, OtherToWorld);
+	// MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
 
-	FDynamicMesh3 OtherMesh;
-	OtherMeshActor->GetMeshCopy(OtherMesh);
-	MeshTransforms::ApplyTransform(OtherMesh, OtherToWorld);
-	MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
+	TSharedPtr<FDynamicMesh3, ESPMode::ThreadSafe> SourceMeshPtr =  MakeShared<FDynamicMesh3, ESPMode::ThreadSafe>();
+	SourceMeshPtr->Copy(SourceMesh);
+	
+	FPlaneCutOp PlaneCut;
+	PlaneCut.LocalPlaneOrigin = PlaneOrigin;
+	PlaneCut.LocalPlaneNormal = PlaneNormal;
+	PlaneCut.bFillCutHole = bFillCutHole;
+	PlaneCut.bFillSpans = bFillSpans;
+	PlaneCut.bKeepBothHalves = bKeepBothHalves;
+	PlaneCut.OriginalMesh = SourceMeshPtr;
+	FProgressCancel ProgressCancel;
+	PlaneCut.CalculateResult(&ProgressCancel);
+	TUniquePtr<FDynamicMesh3> ResultMesh = PlaneCut.ExtractResult();
 
+	TDynamicMeshScalarTriangleAttribute<int>* SubMeshIDs =
+			static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(ResultMesh->Attributes()->GetAttachedAttribute(
+				FPlaneCutOp::ObjectIndexAttribute));
+	TArray<FDynamicMesh3> SplitMeshes;
+	FDynamicMeshEditor::SplitMesh(ResultMesh.Get(),SplitMeshes,[SubMeshIDs](int TID)
+		{
+			return SubMeshIDs->GetValue(TID);
+		});
+	
 	EditMesh([&](FDynamicMesh3& MeshToUpdate)
 	{
-		FPlaneCutOp PlaneCut;
-		PlaneCut.LocalPlaneOrigin = PlaneOrigin;
-		PlaneCut.LocalPlaneNormal = PlaneNormal;
-		PlaneCut.bFillCutHole = bFillCutHole;
-		PlaneCut.bFillSpans = bFillSpans;
-		PlaneCut.bKeepBothHalves = bKeepBothHalves;
-		PlaneCut.OriginalMesh = MakeShareable(&MeshToUpdate);
-
-		FProgressCancel ProgressCancel;
-		PlaneCut.CalculateResult(&ProgressCancel);
-		
-		TUniquePtr<FDynamicMesh3> OtherHalfMesh = PlaneCut.ExtractResult();
+		MeshToUpdate = MoveTemp(SplitMeshes[0]);
+		//MeshToUpdate = MoveTemp(*ResultMesh);
 		//OtherMesh = MoveTemp(*OtherHalfMesh);
-		OtherMeshActor->EditMesh([&](FDynamicMesh3& Mesh)
-		{
-			Mesh.Copy(OtherMesh);
-		});
+		// OtherMeshActor->EditMesh([&](FDynamicMesh3& Mesh)
+		// {
+		// 	Mesh.Copy(OtherMesh);
+		// });
 	});	
 }
