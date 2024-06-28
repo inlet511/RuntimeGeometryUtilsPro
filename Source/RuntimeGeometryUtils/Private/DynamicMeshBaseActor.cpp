@@ -212,10 +212,6 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			SphereGen.Radius = this->MinimumRadius;
 			MeshOut.Copy(&SphereGen.Generate());
 		}
-		//if (!RTGUtils::ReadFBXMesh(UsePath, MeshOut, true, true, true, bReverseOrientation))
-		//{
-
-		//}
 
 		if (bCenterPivot)
 		{
@@ -688,19 +684,30 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 			return SubMeshIDs->GetValue(TID);
 		});
 
+	// 更新"我的"Mesh
+	NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
+	CollisionMode = EDynamicMeshActorCollisionMode::ComplexAsSimple;
 	EditMesh([&](FDynamicMesh3& MeshToUpdate)
 	{
 		MeshToUpdate = MoveTemp(SplitMeshes[0]);
+		RecomputeNormals(MeshToUpdate);
 	});
+	
 
-	// 设置第二个Mesh
+	
+
+	// 更新新的Mesh
 	if(IsValid(OtherMeshActor) && SplitMeshes.Num()==2)
 	{
+		OtherMeshActor->NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
 		OtherMeshActor->SetActorLocation(this->GetActorLocation());
 		OtherMeshActor->SetActorRotation(this->GetActorRotation());
+		// 仅对ProceduralMesh有效，会显著增加Cost
+		OtherMeshActor->CollisionMode = EDynamicMeshActorCollisionMode::ComplexAsSimple;
 		OtherMeshActor->EditMesh([&](FDynamicMesh3& MeshToUpdate)
 		{
 			MeshToUpdate = MoveTemp(SplitMeshes[1]);
+			RecomputeNormals(MeshToUpdate);
 		});
 	}
 }

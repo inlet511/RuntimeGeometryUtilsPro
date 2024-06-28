@@ -15,6 +15,7 @@ ADynamicPMCActor::ADynamicPMCActor()
 void ADynamicPMCActor::BeginPlay()
 {
 	Super::BeginPlay();
+
 }
 
 // Called every frame

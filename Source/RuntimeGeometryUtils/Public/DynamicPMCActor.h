@@ -18,7 +18,7 @@ public:
 	ADynamicPMCActor();
 
 public:
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere,BlueprintReadWrite)
 	UProceduralMeshComponent* MeshComponent = nullptr;
 
 

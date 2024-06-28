@@ -248,10 +248,10 @@ protected:
 	// Support for AABBTree / Spatial Queries
 	//
 public:
-	UPROPERTY(EditAnywhere, Category = SpatialQueryOptions)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SpatialQueryOptions)
 	bool bEnableSpatialQueries = false;
 
-	UPROPERTY(EditAnywhere, Category = SpatialQueryOptions)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SpatialQueryOptions)
 	bool bEnableInsideQueries = false;
 
 protected:
