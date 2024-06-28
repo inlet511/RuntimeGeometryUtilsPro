@@ -1,5 +1,6 @@
 ﻿#include "DynamicMeshBaseActor.h"
 
+#include "ConstrainedDelaunay2.h"
 #include "Generators/SphereGenerator.h"
 #include "Generators/GridBoxMeshGenerator.h"
 #include "MeshQueries.h"
@@ -33,8 +34,11 @@
 #include "../Public/Generators/RandomPointsMeshGenerator.h"
 #include "../Public/Generators/FDelaunayGenrator.h"
 #include "CuttingOps/PlaneCutOp.h"
+#include "Operations/MeshPlaneCut.h"
 
 using namespace UE::Geometry;
+
+UE_DISABLE_OPTIMIZATION
 
 // Sets default values
 ADynamicMeshBaseActor::ADynamicMeshBaseActor()
@@ -643,33 +647,30 @@ void ADynamicMeshBaseActor::WriteObj(const FString OutputPath)
 	RTGUtils::WriteOBJMesh(OutputPath, SourceMesh, true);
 }
 
-void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, bool bFillCutHole, bool bFillSpans, bool bKeepBothHalves)
-{
-	if (!MeshAABBTree.IsValid(true))
-	{
-		MeshAABBTree.Build();
-	}
-	if (!FastWinding->IsBuilt())
-	{
-		FastWinding->Build();
-	}
+void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth, bool bFillCutHole, bool bFillSpans, bool bKeepBothHalves)
+{	
+	// 给三角形添加自定义属性
+	const FName ObjectIndexAttribute = "ObjectIndexAttribute";
+	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
+	SubObjectAttrib->Initialize(0);
+	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);
 
-	// if (ensure(OtherMeshActor) == false) return;
-
-	// FTransform3d ActorToWorld(GetActorTransform());
-	// FTransform3d OtherToWorld(OtherMeshActor->GetActorTransform());
-	//
-	// FDynamicMesh3 OtherMesh;
-	// OtherMeshActor->GetMeshCopy(OtherMesh);
-	// MeshTransforms::ApplyTransform(OtherMesh, OtherToWorld);
-	// MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
-
+	// 拷贝原始Mesh
 	TSharedPtr<FDynamicMesh3, ESPMode::ThreadSafe> SourceMeshPtr =  MakeShared<FDynamicMesh3, ESPMode::ThreadSafe>();
 	SourceMeshPtr->Copy(SourceMesh);
-	
+	SourceMeshPtr->EnableAttributes();
+
+	// 从世界坐标转换到局部坐标
+	FTransform LocalToWorld = GetTransform();
+	FTransform WorldToLocal = LocalToWorld.Inverse();
+	FVector LocalOrigin = WorldToLocal.TransformPosition(PlaneOrigin);
+	FVector LocalNormal = WorldToLocal.TransformVector(PlaneNormal);
+
+	// 创建PlaneCut
 	FPlaneCutOp PlaneCut;
-	PlaneCut.LocalPlaneOrigin = PlaneOrigin;
-	PlaneCut.LocalPlaneNormal = PlaneNormal;
+	PlaneCut.SetTransform(LocalToWorld);
+	PlaneCut.LocalPlaneOrigin = LocalOrigin;
+	PlaneCut.LocalPlaneNormal = LocalNormal;
 	PlaneCut.bFillCutHole = bFillCutHole;
 	PlaneCut.bFillSpans = bFillSpans;
 	PlaneCut.bKeepBothHalves = bKeepBothHalves;
@@ -678,23 +679,30 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 	PlaneCut.CalculateResult(&ProgressCancel);
 	TUniquePtr<FDynamicMesh3> ResultMesh = PlaneCut.ExtractResult();
 
-	TDynamicMeshScalarTriangleAttribute<int>* SubMeshIDs =
-			static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(ResultMesh->Attributes()->GetAttachedAttribute(
-				FPlaneCutOp::ObjectIndexAttribute));
+	TDynamicMeshScalarTriangleAttribute<int>* SubMeshIDs = static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(ResultMesh->Attributes()->GetAttachedAttribute(ObjectIndexAttribute));
+
+	// 划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
 	FDynamicMeshEditor::SplitMesh(ResultMesh.Get(),SplitMeshes,[SubMeshIDs](int TID)
 		{
 			return SubMeshIDs->GetValue(TID);
 		});
-	
+
 	EditMesh([&](FDynamicMesh3& MeshToUpdate)
 	{
 		MeshToUpdate = MoveTemp(SplitMeshes[0]);
-		//MeshToUpdate = MoveTemp(*ResultMesh);
-		//OtherMesh = MoveTemp(*OtherHalfMesh);
-		// OtherMeshActor->EditMesh([&](FDynamicMesh3& Mesh)
-		// {
-		// 	Mesh.Copy(OtherMesh);
-		// });
-	});	
+	});
+
+	// 设置第二个Mesh
+	if(IsValid(OtherMeshActor) && SplitMeshes.Num()==2)
+	{
+		OtherMeshActor->SetActorLocation(this->GetActorLocation());
+		OtherMeshActor->SetActorRotation(this->GetActorRotation());
+		OtherMeshActor->EditMesh([&](FDynamicMesh3& MeshToUpdate)
+		{
+			MeshToUpdate = MoveTemp(SplitMeshes[1]);
+		});
+	}
 }
+
+UE_ENABLE_OPTIMIZATION

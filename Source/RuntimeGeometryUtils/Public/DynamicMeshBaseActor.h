@@ -407,7 +407,7 @@ public:
 	void WriteObj(const FString OutputPath);
 
 	UFUNCTION(BlueprintCallable)
-	void PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, bool bFillCutHole,bool bFillSpans = false, bool bKeepBothHalves = true);
+	void PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth = 0, bool bFillCutHole = true, bool bFillSpans = false, bool bKeepBothHalves = true);
 	// Custom Functions End ***********************************
 
 
