@@ -5,7 +5,7 @@
 
 #include "DynamicMeshToMeshDescription.h"
 #include "StaticMeshAttributes.h"
-
+#include "Engine/StaticMesh.h"
 
 
 using namespace UE::Geometry;
@@ -30,6 +30,11 @@ void RTGUtils::UpdateStaticMeshFromDynamicMesh(
 	// Build the static mesh render data, one FMeshDescription* per LOD.
 	TArray<const FMeshDescription*> MeshDescriptionPtrs;
 	MeshDescriptionPtrs.Emplace(&MeshDescription);
+	
+	// UStaticMesh::FBuildMeshDescriptionsParams Params;	
+	// Params.bBuildSimpleCollision = true;
+	// Params.bFastBuild = true;
+	// StaticMesh->BuildFromMeshDescriptions(MeshDescriptionPtrs, Params);
 	StaticMesh->BuildFromMeshDescriptions(MeshDescriptionPtrs);
 }
 

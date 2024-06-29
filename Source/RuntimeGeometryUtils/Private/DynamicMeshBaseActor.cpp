@@ -137,7 +137,6 @@ void ADynamicMeshBaseActor::OnMeshEditedInternal()
 	OnMeshModified.Broadcast(this);
 }
 
-
 void ADynamicMeshBaseActor::OnMeshGenerationSettingsModified()
 {
 	EditMesh([this](FDynamicMesh3& MeshToUpdate) {
@@ -148,7 +147,11 @@ void ADynamicMeshBaseActor::OnMeshGenerationSettingsModified()
 
 void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 {
-	if (SourceType == EDynamicMeshActorSourceType::Primitive)
+	if(SourceType == EDynamicMeshActorSourceType::None)
+	{
+		// Do Nothing.
+	}
+	else if (SourceType == EDynamicMeshActorSourceType::Primitive)
 	{
 		double UseRadius = (this->MinimumRadius + this->VariableRadius)
 			+ (this->VariableRadius) * FMathd::Sin(PulseSpeed * AccumulatedTime);
@@ -644,7 +647,8 @@ void ADynamicMeshBaseActor::WriteObj(const FString OutputPath)
 }
 
 void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth, bool bFillCutHole, bool bFillSpans, bool bKeepBothHalves)
-{	
+{
+	auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
 	// 给三角形添加自定义属性
 	const FName ObjectIndexAttribute = "ObjectIndexAttribute";
 	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
@@ -677,16 +681,21 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 
 	TDynamicMeshScalarTriangleAttribute<int>* SubMeshIDs = static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(ResultMesh->Attributes()->GetAttachedAttribute(ObjectIndexAttribute));
 
-	// 划分为两个SourceMesh
+	// 根据三角形的Attribute划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
-	FDynamicMeshEditor::SplitMesh(ResultMesh.Get(),SplitMeshes,[SubMeshIDs](int TID)
+	bool bSucceeded = FDynamicMeshEditor::SplitMesh(ResultMesh.Get(),SplitMeshes,[SubMeshIDs](int TID)
 		{
 			return SubMeshIDs->GetValue(TID);
 		});
 
-	// 更新"我的"Mesh
+	if(!bSucceeded)
+		return;
+	
+	SplitMeshes[0].Attributes()->RemoveAttribute(ObjectIndexAttribute);
+	SplitMeshes[1].Attributes()->RemoveAttribute(ObjectIndexAttribute);
+
+	// 更新 "我的" Mesh
 	NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
-	CollisionMode = EDynamicMeshActorCollisionMode::ComplexAsSimple;
 	EditMesh([&](FDynamicMesh3& MeshToUpdate)
 	{
 		MeshToUpdate = MoveTemp(SplitMeshes[0]);
@@ -694,22 +703,102 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 	});
 	
 
-	
-
-	// 更新新的Mesh
+	// 更新 "新的" Mesh
 	if(IsValid(OtherMeshActor) && SplitMeshes.Num()==2)
 	{
 		OtherMeshActor->NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
 		OtherMeshActor->SetActorLocation(this->GetActorLocation());
 		OtherMeshActor->SetActorRotation(this->GetActorRotation());
-		// 仅对ProceduralMesh有效，会显著增加Cost
-		OtherMeshActor->CollisionMode = EDynamicMeshActorCollisionMode::ComplexAsSimple;
 		OtherMeshActor->EditMesh([&](FDynamicMesh3& MeshToUpdate)
 		{
 			MeshToUpdate = MoveTemp(SplitMeshes[1]);
 			RecomputeNormals(MeshToUpdate);
 		});
 	}
+
+	auto End = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
+
+	UE_LOG(LogTemp, Warning, TEXT("Plane Cut cost : %f ms"), End-Start);
+}
+
+void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor, FVector PlaneOrigin,
+	FVector PlaneNormal, float GapWidth, bool bFillCutHole, bool bFillSpans, bool bKeepBothHalves)
+{
+		auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
+	// 给三角形添加自定义属性
+	const FName ObjectIndexAttribute = "ObjectIndexAttribute";
+	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
+	SubObjectAttrib->Initialize(0);
+	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);
+
+	// // 拷贝原始Mesh
+	// TSharedPtr<FDynamicMesh3, ESPMode::ThreadSafe> SourceMeshPtr =  MakeShared<FDynamicMesh3, ESPMode::ThreadSafe>();
+	// SourceMeshPtr->Copy(SourceMesh);
+	// SourceMeshPtr->EnableAttributes();
+
+	// 从世界坐标转换到局部坐标
+	FTransform LocalToWorld = GetTransform();
+	FTransform WorldToLocal = LocalToWorld.Inverse();
+	FVector LocalOrigin = WorldToLocal.TransformPosition(PlaneOrigin);
+	FVector LocalNormal = WorldToLocal.TransformVector(PlaneNormal);
+
+	// 使用相对更"原始"的MeshPlaneCut,可以保留更多信息
+	FDynamicMesh3 ResultMesh;
+	ResultMesh.Copy(SourceMesh,true,true,true,true);
+	
+	// 创建PlaneCut
+	// FPlaneCutOp PlaneCut;
+	// PlaneCut.SetTransform(LocalToWorld);
+	// PlaneCut.LocalPlaneOrigin = LocalOrigin;
+	// PlaneCut.LocalPlaneNormal = LocalNormal;
+	// PlaneCut.bFillCutHole = bFillCutHole;
+	// PlaneCut.bFillSpans = bFillSpans;
+	// PlaneCut.bKeepBothHalves = bKeepBothHalves;
+	// PlaneCut.OriginalMesh = SourceMeshPtr;
+	// FProgressCancel ProgressCancel;
+	// PlaneCut.CalculateResult(&ProgressCancel);
+	// TUniquePtr<FDynamicMesh3> ResultMesh = PlaneCut.ExtractResult();
+
+	TDynamicMeshScalarTriangleAttribute<int>* SubMeshIDs = static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(ResultMesh.Attributes()->GetAttachedAttribute(ObjectIndexAttribute));
+
+	// 根据三角形的Attribute划分为两个SourceMesh
+	TArray<FDynamicMesh3> SplitMeshes;
+	bool bSucceeded = FDynamicMeshEditor::SplitMesh(&ResultMesh,SplitMeshes,[SubMeshIDs](int TID)
+		{
+			return SubMeshIDs->GetValue(TID);
+		});
+
+	if(!bSucceeded)
+		return;
+	
+	SplitMeshes[0].Attributes()->RemoveAttribute(ObjectIndexAttribute);
+	SplitMeshes[1].Attributes()->RemoveAttribute(ObjectIndexAttribute);
+
+	// 更新 "我的" Mesh
+	NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
+	EditMesh([&](FDynamicMesh3& MeshToUpdate)
+	{
+		MeshToUpdate = MoveTemp(SplitMeshes[0]);
+		RecomputeNormals(MeshToUpdate);
+	});
+	
+
+	// 更新 "新的" Mesh
+	if(IsValid(OtherMeshActor) && SplitMeshes.Num()==2)
+	{
+		OtherMeshActor->NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
+		OtherMeshActor->SetActorLocation(this->GetActorLocation());
+		OtherMeshActor->SetActorRotation(this->GetActorRotation());
+		OtherMeshActor->EditMesh([&](FDynamicMesh3& MeshToUpdate)
+		{
+			MeshToUpdate = MoveTemp(SplitMeshes[1]);
+			RecomputeNormals(MeshToUpdate);
+		});
+	}
+
+	auto End = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
+
+	UE_LOG(LogTemp, Warning, TEXT("Plane Cut cost : %f ms"), End-Start);
 }
 
 UE_ENABLE_OPTIMIZATION

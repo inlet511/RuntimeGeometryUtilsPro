@@ -29,6 +29,7 @@ enum class EDynamicMeshActorNormalsMode : uint8
 UENUM()
 enum class EDynamicMeshActorSourceType : uint8
 {
+	None, // 添加None类型，用于阻止每次修改属性都重新生成
 	Primitive,
 	ImportedMesh,
 	FromStaticMesh
@@ -60,7 +61,7 @@ enum class EDynamicMeshActorBooleanOperation : uint8
 	Intersection
 };
 
-
+/*
 UENUM(BlueprintType)
 enum class EDynamicMeshActorCollisionMode : uint8
 {
@@ -68,7 +69,7 @@ enum class EDynamicMeshActorCollisionMode : uint8
 	ComplexAsSimple,
 	ComplexAsSimpleAsync
 };
-
+*/
 
 
 /**
@@ -112,8 +113,8 @@ public:
 
 public:
 	/** Type of mesh used to initialize this Actor - either a generated mesh Primitive or an Imported OBJ file */
-	UPROPERTY(EditAnywhere, Category = MeshOptions)
-	EDynamicMeshActorSourceType SourceType = EDynamicMeshActorSourceType::Primitive;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite ,Category = MeshOptions)
+	EDynamicMeshActorSourceType SourceType = EDynamicMeshActorSourceType::None;
 
 	/** Type of normals computed for the Mesh */
 	UPROPERTY(EditAnywhere, Category = MeshOptions)
@@ -127,6 +128,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
 	bool bRegenerateOnTick = false;
 
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = PrimitiveOptions)
+	bool bGenerateCollision = false;
+	
 	//
 	// Parameters for SourceType = Imported
 	// 
@@ -153,7 +158,7 @@ public:
 	//
 
 	/** Type of generated mesh primitive */
-	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
+	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
 	EDynamicMeshActorPrimitiveType PrimitiveType = EDynamicMeshActorPrimitiveType::Box;
 
 	/** Triangle density of generated primitive */
@@ -265,8 +270,9 @@ protected:
 	// Support for Runtime-Generated Collision
 	//
 public:
-	UPROPERTY(EditAnywhere, Category = RuntimeCollisionOptions)
-	EDynamicMeshActorCollisionMode CollisionMode = EDynamicMeshActorCollisionMode::NoCollision;
+	
+	// UPROPERTY(EditAnywhere, Category = RuntimeCollisionOptions)
+	// EDynamicMeshActorCollisionMode CollisionMode = EDynamicMeshActorCollisionMode::NoCollision;
 
 
 	//
@@ -280,6 +286,10 @@ protected:
 	virtual void OnMeshEditedInternal();
 
 
+	/*
+	 * 生成碰撞体
+	 */
+	virtual void GenerateCollision() PURE_VIRTUAL(ADynamicMeshBaseActor::GenerateCollision, return;);
 
 
 	//
@@ -408,6 +418,10 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth = 0, bool bFillCutHole = true, bool bFillSpans = false, bool bKeepBothHalves = true);
+
+	UFUNCTION(Blueprintable)
+	void AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth = 0, bool bFillCutHole = true, bool bFillSpans = false, bool bKeepBothHalves = true);
+	
 	// Custom Functions End ***********************************
 
 

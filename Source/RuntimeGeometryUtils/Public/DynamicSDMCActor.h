@@ -30,11 +30,15 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	
+
 protected:
 	/**
 	 * ADynamicBaseActor API
 	 */
 	virtual void OnMeshEditedInternal() override;
+
+	virtual void GenerateCollision() override;
 
 protected:
 	virtual void UpdateSDMCMesh();

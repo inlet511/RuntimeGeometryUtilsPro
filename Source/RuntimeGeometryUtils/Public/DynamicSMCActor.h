@@ -42,6 +42,7 @@ protected:
 	 * ADynamicBaseActor API
 	 */
 	virtual void OnMeshEditedInternal() override;
+	void GenerateCollision();
 
 protected:
 	virtual void UpdateSMCMesh();
