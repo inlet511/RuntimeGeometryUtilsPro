@@ -419,8 +419,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth = 0, bool bFillCutHole = true, bool bFillSpans = false, bool bKeepBothHalves = true);
 
-	UFUNCTION(Blueprintable)
-	void AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth = 0, bool bFillCutHole = true, bool bFillSpans = false, bool bKeepBothHalves = true);
+	UFUNCTION(BlueprintCallable)
+	void AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal,  float CutUVScale = 1.0);
 	
 	// Custom Functions End ***********************************
 

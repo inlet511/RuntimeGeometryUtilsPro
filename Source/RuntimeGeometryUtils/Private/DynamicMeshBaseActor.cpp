@@ -722,19 +722,14 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 }
 
 void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor, FVector PlaneOrigin,
-	FVector PlaneNormal, float GapWidth, bool bFillCutHole, bool bFillSpans, bool bKeepBothHalves)
+	FVector PlaneNormal,  float CutUVScale)
 {
-		auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
+	auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
 	// 给三角形添加自定义属性
 	const FName ObjectIndexAttribute = "ObjectIndexAttribute";
 	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
 	SubObjectAttrib->Initialize(0);
 	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);
-
-	// // 拷贝原始Mesh
-	// TSharedPtr<FDynamicMesh3, ESPMode::ThreadSafe> SourceMeshPtr =  MakeShared<FDynamicMesh3, ESPMode::ThreadSafe>();
-	// SourceMeshPtr->Copy(SourceMesh);
-	// SourceMeshPtr->EnableAttributes();
 
 	// 从世界坐标转换到局部坐标
 	FTransform LocalToWorld = GetTransform();
@@ -746,26 +741,28 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 	FDynamicMesh3 ResultMesh;
 	ResultMesh.Copy(SourceMesh,true,true,true,true);
 	
-	// 创建PlaneCut
-	// FPlaneCutOp PlaneCut;
-	// PlaneCut.SetTransform(LocalToWorld);
-	// PlaneCut.LocalPlaneOrigin = LocalOrigin;
-	// PlaneCut.LocalPlaneNormal = LocalNormal;
-	// PlaneCut.bFillCutHole = bFillCutHole;
-	// PlaneCut.bFillSpans = bFillSpans;
-	// PlaneCut.bKeepBothHalves = bKeepBothHalves;
-	// PlaneCut.OriginalMesh = SourceMeshPtr;
-	// FProgressCancel ProgressCancel;
-	// PlaneCut.CalculateResult(&ProgressCancel);
-	// TUniquePtr<FDynamicMesh3> ResultMesh = PlaneCut.ExtractResult();
+	FMeshPlaneCut Cut(&ResultMesh, LocalOrigin, LocalNormal);
+	Cut.UVScaleFactor = CutUVScale;
+	Cut.bSimplifyAlongNewEdges = true;
 
-	TDynamicMeshScalarTriangleAttribute<int>* SubMeshIDs = static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(ResultMesh.Attributes()->GetAttachedAttribute(ObjectIndexAttribute));
+	int MaxSubObjectID = -1;
 
+	for (int TID : ResultMesh.TriangleIndicesItr())
+	{
+		MaxSubObjectID = FMath::Max(MaxSubObjectID, SubObjectAttrib->GetValue(TID));
+	}
+	
+	Cut.CutWithoutDelete(true, 0, SubObjectAttrib, MaxSubObjectID+1);
+	Cut.HoleFill(ConstrainedDelaunayTriangulate<double>, true);
+	
+	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib2 = static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(ResultMesh.Attributes()->GetAttachedAttribute(ObjectIndexAttribute));
+	Cut.TransferTriangleLabelsToHoleFillTriangles(SubObjectAttrib);
+	
 	// 根据三角形的Attribute划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
-	bool bSucceeded = FDynamicMeshEditor::SplitMesh(&ResultMesh,SplitMeshes,[SubMeshIDs](int TID)
+	bool bSucceeded = FDynamicMeshEditor::SplitMesh(&ResultMesh,SplitMeshes,[SubObjectAttrib](int TID)
 		{
-			return SubMeshIDs->GetValue(TID);
+			return SubObjectAttrib->GetValue(TID);
 		});
 
 	if(!bSucceeded)
