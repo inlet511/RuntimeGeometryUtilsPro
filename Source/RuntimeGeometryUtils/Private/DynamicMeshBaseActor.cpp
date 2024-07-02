@@ -729,7 +729,7 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 	const FName ObjectIndexAttribute = "ObjectIndexAttribute";
 	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
 	SubObjectAttrib->Initialize(0);
-	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);
+	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);	
 
 	// 从世界坐标转换到局部坐标
 	FTransform LocalToWorld = GetTransform();
@@ -755,8 +755,27 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 	Cut.CutWithoutDelete(true, 0, SubObjectAttrib, MaxSubObjectID+1);
 	Cut.HoleFill(ConstrainedDelaunayTriangulate<double>, true);
 	
-	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib2 = static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(ResultMesh.Attributes()->GetAttachedAttribute(ObjectIndexAttribute));
 	Cut.TransferTriangleLabelsToHoleFillTriangles(SubObjectAttrib);
+
+	// 给三角形添加"IsCutPlane属性
+	const FName IsCutPlaneAttName = "bIsCutPlane";
+	TDynamicMeshScalarTriangleAttribute<int>* IsCutPlaneAttribute = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
+	SubObjectAttrib->Initialize(0);
+	SourceMesh.Attributes()->AttachAttribute(IsCutPlaneAttName, IsCutPlaneAttribute);
+	
+	// 填充面三角形索引
+	TArray<TArray<int32>> HoleFillTriangles = Cut.HoleFillTriangles;
+
+	// 设置切面为True
+	for (int BoundaryIdx = 0; BoundaryIdx < Cut.OpenBoundaries.Num(); BoundaryIdx++)
+	{
+		const TArray<int>& Triangles = HoleFillTriangles[BoundaryIdx];
+		const FMeshPlaneCut::FOpenBoundary& Boundary = Cut.OpenBoundaries[BoundaryIdx];
+		for (int TID : Triangles)
+		{
+			IsCutPlaneAttribute->SetValue(TID, 0);
+		}
+	}
 	
 	// 根据三角形的Attribute划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
@@ -767,6 +786,8 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 
 	if(!bSucceeded)
 		return;
+
+
 	
 	SplitMeshes[0].Attributes()->RemoveAttribute(ObjectIndexAttribute);
 	SplitMeshes[1].Attributes()->RemoveAttribute(ObjectIndexAttribute);

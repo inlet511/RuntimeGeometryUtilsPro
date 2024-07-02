@@ -73,18 +73,6 @@ void ADynamicPMCActor::UpdatePMCMesh()
 		bool bUseVertexColors = false;
 
 		bool bGenerateSectionCollision = false;
-		
-		//CollisionMode似乎没什么用，而且会干扰手动设置bUseAsyncCooking 和 bUseComplexAsSimpleCollision选项
-		
-		/*
-		if (this->CollisionMode == EDynamicMeshActorCollisionMode::ComplexAsSimple
-			|| this->CollisionMode == EDynamicMeshActorCollisionMode::ComplexAsSimpleAsync)
-		{
-			bGenerateSectionCollision = true;
-			MeshComponent->bUseAsyncCooking = (this->CollisionMode == EDynamicMeshActorCollisionMode::ComplexAsSimpleAsync);
-			MeshComponent->bUseComplexAsSimpleCollision = true;			
-		}
-		*/
 
 		// 生成碰撞
 		if(bGenerateCollision)
@@ -96,8 +84,9 @@ void ADynamicPMCActor::UpdatePMCMesh()
 		RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(MeshComponent, &SourceMesh, bUseFaceNormals, bUseUV0, bUseVertexColors, bGenerateSectionCollision);
 
 		// update material on new section
-		UMaterialInterface* UseMaterial = (this->Material != nullptr) ? this->Material : UMaterial::GetDefaultMaterial(MD_Surface);
-		MeshComponent->SetMaterial(0, UseMaterial);
+		UMaterialInterface* ParentMaterial = (this->Material != nullptr) ? this->Material : UMaterial::GetDefaultMaterial(MD_Surface);
+		CutPlaneMaterial = (CutPlaneMaterial == nullptr)? ParentMaterial : CutPlaneMaterial;
+		MeshComponent->SetMaterial(0, CutPlaneMaterial);
 	}
 }
 

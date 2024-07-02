@@ -51,7 +51,15 @@ void RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 	bool bCreateCollision)
 {
 	Component->ClearAllMeshSections();
-
+	
+	// FName IsCutPlaneAttName = "bIsCutPlane";
+	// TDynamicMeshScalarTriangleAttribute<int>* IsCutPlaneAttribute = Cast<TDynamicMeshScalarTriangleAttribute<int>*>(Mesh->Attributes()->GetAttachedAttribute(IsCutPlaneAttName));
+	//
+	// for(int TriangleID : Mesh->TriangleIndicesItr() )
+	// {
+	// 	int bIsCutPlane = IsCutPlaneAttribute->GetValue(TriangleID);
+	// }
+	
 	int32 NumTriangles = Mesh->TriangleCount();
 	int32 NumVertices = NumTriangles * 3;
 
