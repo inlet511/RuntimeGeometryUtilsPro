@@ -721,8 +721,44 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 	UE_LOG(LogTemp, Warning, TEXT("Plane Cut cost : %f ms"), End-Start);
 }
 
+void ADynamicMeshBaseActor::SetIsShell(const FMeshPlaneCut& Cut)
+{
+	// 给三角形添加"IsShell"属性, 表示最初的外层壳
+	const FName IsShellName = "bIsShell";
+	TDynamicMeshScalarTriangleAttribute<bool>* IsShellAtt = nullptr;
+	
+	if(SourceMesh.Attributes())
+	{
+		// 模型包含 IsShell 属性, 直接添加
+		if(SourceMesh.Attributes()->HasAttachedAttribute(IsShellName))
+		{
+			IsShellAtt = static_cast<TDynamicMeshScalarTriangleAttribute<bool>*>(SourceMesh.Attributes()->GetAttachedAttribute(IsShellName));
+		}
+		else // 模型不包含 IsShell 属性, 需要添加
+		{
+			IsShellAtt = new TDynamicMeshScalarTriangleAttribute<bool>(&SourceMesh);
+			IsShellAtt->Initialize(true); //初始化时都为true
+			SourceMesh.Attributes()->AttachAttribute(IsShellName, IsShellAtt);
+		}
+	}	
+	
+	// 切割面上的三角形索引
+	TArray<TArray<int32>> HoleFillTriangles = Cut.HoleFillTriangles;
+	
+	// 设置 IsShell为 false
+	for (int BoundaryIdx = 0; BoundaryIdx < Cut.OpenBoundaries.Num(); BoundaryIdx++)
+	{
+		const TArray<int>& Triangles = HoleFillTriangles[BoundaryIdx];
+		const FMeshPlaneCut::FOpenBoundary& Boundary = Cut.OpenBoundaries[BoundaryIdx];
+		for (const int Tid : Triangles)
+		{
+			IsShellAtt->SetValue(Tid, false);
+		}
+	}
+}
+
 void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor, FVector PlaneOrigin,
-	FVector PlaneNormal,  float CutUVScale)
+                                             FVector PlaneNormal,  float CutUVScale)
 {
 	auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
 	// 给三角形添加自定义属性
@@ -757,27 +793,10 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 	
 	Cut.TransferTriangleLabelsToHoleFillTriangles(SubObjectAttrib);
 
-	// 给三角形添加"IsCutPlane属性
-	const FName IsCutPlaneAttName = "bIsCutPlane";
-	TDynamicMeshScalarTriangleAttribute<int>* IsCutPlaneAttribute = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
-	SubObjectAttrib->Initialize(0);
-	SourceMesh.Attributes()->AttachAttribute(IsCutPlaneAttName, IsCutPlaneAttribute);
+	// 初始化/设置IsShell属性，该属性会不断往下传递
+	SetIsShell(Cut);
 	
-	// 填充面三角形索引
-	TArray<TArray<int32>> HoleFillTriangles = Cut.HoleFillTriangles;
-
-	// 设置切面为True
-	for (int BoundaryIdx = 0; BoundaryIdx < Cut.OpenBoundaries.Num(); BoundaryIdx++)
-	{
-		const TArray<int>& Triangles = HoleFillTriangles[BoundaryIdx];
-		const FMeshPlaneCut::FOpenBoundary& Boundary = Cut.OpenBoundaries[BoundaryIdx];
-		for (int TID : Triangles)
-		{
-			IsCutPlaneAttribute->SetValue(TID, 0);
-		}
-	}
-	
-	// 根据三角形的Attribute划分为两个SourceMesh
+	// 根据三角形的SubObjectAttrib划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
 	bool bSucceeded = FDynamicMeshEditor::SplitMesh(&ResultMesh,SplitMeshes,[SubObjectAttrib](int TID)
 		{
@@ -786,8 +805,6 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 
 	if(!bSucceeded)
 		return;
-
-
 	
 	SplitMeshes[0].Attributes()->RemoveAttribute(ObjectIndexAttribute);
 	SplitMeshes[1].Attributes()->RemoveAttribute(ObjectIndexAttribute);

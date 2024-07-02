@@ -22,13 +22,14 @@ namespace RTGUtils
 
 	/**
 	 * Initialize a ProceduralMeshComponent with a single section defined by the given FDynamicMesh3.
+	 * @return if the mesh has cut section
 	 * @param bUseFaceNormals if true, each triangle is shaded with per-triangle normal instead of split-vertex normals from FDynamicMesh3 overlay
 	 * @param bInitializeUV0 if true, UV0 is initialized, otherwise it is not (set to 0)
 	 * @param bInitializePerVertexColors if true, per-vertex colors on the FDynamicMesh3 are used to initialize vertex colors of the PMC
 	 */
-	RUNTIMEGEOMETRYUTILS_API void UpdatePMCFromDynamicMesh_SplitTriangles(
+	RUNTIMEGEOMETRYUTILS_API bool UpdatePMCFromDynamicMesh_SplitTriangles(
 		UProceduralMeshComponent* Component, 
-		const FDynamicMesh3* Mesh,
+		FDynamicMesh3* Mesh,
 		bool bUseFaceNormals,
 		bool bInitializeUV0,
 		bool bInitializePerVertexColors,

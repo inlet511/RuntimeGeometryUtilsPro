@@ -42,23 +42,21 @@ void RTGUtils::UpdateStaticMeshFromDynamicMesh(
 
 
 
-void RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
+bool RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 	UProceduralMeshComponent* Component, 
-	const FDynamicMesh3* Mesh,
+	FDynamicMesh3* Mesh,
 	bool bUseFaceNormals,
 	bool bInitializeUV0,
 	bool bInitializePerVertexColors,
 	bool bCreateCollision)
 {
+	using namespace UE::Geometry;
+
+	if(Mesh==nullptr)
+		return false;
+	
 	Component->ClearAllMeshSections();
 	
-	// FName IsCutPlaneAttName = "bIsCutPlane";
-	// TDynamicMeshScalarTriangleAttribute<int>* IsCutPlaneAttribute = Cast<TDynamicMeshScalarTriangleAttribute<int>*>(Mesh->Attributes()->GetAttachedAttribute(IsCutPlaneAttName));
-	//
-	// for(int TriangleID : Mesh->TriangleIndicesItr() )
-	// {
-	// 	int bIsCutPlane = IsCutPlaneAttribute->GetValue(TriangleID);
-	// }
 	
 	int32 NumTriangles = Mesh->TriangleCount();
 	int32 NumVertices = NumTriangles * 3;
@@ -98,14 +96,35 @@ void RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 	TArray<FProcMeshTangent> Tangents;		// not supporting this for now
 
 	TArray<int32> Triangles;
-	Triangles.SetNumUninitialized(NumTriangles*3);
+	Triangles.Empty();
+	
+	TArray<int32> Triangles_CutSection;
+	Triangles_CutSection.Empty();
 
+	
+	FName IsShellName = "bIsShell";
+	bool bHasShellAtt; // 是否具有 IsShell这个属性
+	if(Mesh->Attributes())
+	{
+		bHasShellAtt = Mesh->Attributes()->HasAttachedAttribute(IsShellName);
+	}
+	else
+	{
+		bHasShellAtt = false;	
+	}
+	TDynamicMeshScalarTriangleAttribute<bool>* IsCutSection = nullptr;
+	if(bHasShellAtt)
+	{
+		IsCutSection = static_cast<TDynamicMeshScalarTriangleAttribute<bool>*>(Mesh->Attributes()->GetAttachedAttribute(IsShellName));
+	}
+	
+	
 	FVector3d Position[3];
 	FVector3f Normal[3];
 	FVector2f UV[3];
 	int32 BufferIndex = 0;
 	for (int32 tid : Mesh->TriangleIndicesItr())
-	{
+	{		
 		int32 k = 3 * (BufferIndex++);
 
 		FIndex3i TriVerts = Mesh->GetTriangle(tid);
@@ -152,10 +171,37 @@ void RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 			VtxColors[k+2] = (FLinearColor)Mesh->GetVertexColor(TriVerts.C);
 		}
 
-		Triangles[k] = k;
-		Triangles[k+1] = k+1;
-		Triangles[k+2] = k+2;
+
+		// 获取是否是裁切面		
+		if(bHasShellAtt)
+		{
+			bool bIsCutPlane = IsCutSection->GetValue(tid);
+			if(bIsCutPlane)
+			{
+				Triangles_CutSection.Add(k);
+				Triangles_CutSection.Add(k+1);
+				Triangles_CutSection.Add(k+2);
+			}
+			else
+			{
+				Triangles.Add(k);
+				Triangles.Add(k+1);
+				Triangles.Add(k+2);
+			}
+		}
+		else // No Cut Plane Section
+		{
+			Triangles.Add(k);
+			Triangles.Add(k+1);
+			Triangles.Add(k+2);
+		}		
 	}
 
 	Component->CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals, UV0, VtxColors, Tangents, bCreateCollision);
+	if(bHasShellAtt)
+	{
+		Component->CreateMeshSection_LinearColor(1, Vertices, Triangles_CutSection, Normals, UV0, VtxColors, Tangents, bCreateCollision);
+		return true;
+	}
+	return false;
 }

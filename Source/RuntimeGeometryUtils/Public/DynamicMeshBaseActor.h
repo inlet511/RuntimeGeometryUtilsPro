@@ -7,6 +7,7 @@
 #include "Components/DynamicMeshComponent.h"
 #include "Spatial/FastWinding.h"
 #include "CleaningOps/SimplifyMeshOp.h"
+#include "Operations/MeshPlaneCut.h"
 #include "DynamicMeshBaseActor.generated.h"
 
 using namespace UE::Geometry;
@@ -121,7 +122,7 @@ public:
 	EDynamicMeshActorNormalsMode NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
 
 	/** Material assigned to child Components created by subclasses */
-	UPROPERTY(EditAnywhere, Category = MaterialOptions)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MaterialOptions)
 	UMaterialInterface* Material;
 
 	/** If true, mesh will be regenerated or re-imported on tick. Can be useful for prototyping procedural animation, but not the most efficient way to do it */
@@ -418,6 +419,7 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth = 0, bool bFillCutHole = true, bool bFillSpans = false, bool bKeepBothHalves = true);
+	void SetIsShell(const FMeshPlaneCut& Cut);
 
 	UFUNCTION(BlueprintCallable)
 	void AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal,  float CutUVScale = 1.0);

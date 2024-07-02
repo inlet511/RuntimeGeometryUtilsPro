@@ -81,12 +81,15 @@ void ADynamicPMCActor::UpdatePMCMesh()
 			MeshComponent->SetSimulatePhysics(true);
 		}
 
-		RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(MeshComponent, &SourceMesh, bUseFaceNormals, bUseUV0, bUseVertexColors, bGenerateSectionCollision);
+		bool bHasCutSection = RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(MeshComponent, &SourceMesh, bUseFaceNormals, bUseUV0, bUseVertexColors, bGenerateSectionCollision);
 
-		// update material on new section
-		UMaterialInterface* ParentMaterial = (this->Material != nullptr) ? this->Material : UMaterial::GetDefaultMaterial(MD_Surface);
-		CutPlaneMaterial = (CutPlaneMaterial == nullptr)? ParentMaterial : CutPlaneMaterial;
-		MeshComponent->SetMaterial(0, CutPlaneMaterial);
+		// update material
+		MeshComponent->SetMaterial(0, this->Material);
+		if(bHasCutSection)
+		{			
+			MeshComponent->SetMaterial(1, CutPlaneMaterial);
+		}
+	
 	}
 }
 

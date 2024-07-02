@@ -21,8 +21,8 @@ public:
 	UPROPERTY(VisibleAnywhere,BlueprintReadWrite)
 	UProceduralMeshComponent* MeshComponent = nullptr;
 
-	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category = "Material Options")
-	UMaterialInterface* CutPlaneMaterial = nullptr;
+	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category = "MaterialOptions")
+	UMaterialInterface* CutPlaneMaterial;
 
 protected:
 	// Called when the game starts or when spawned
