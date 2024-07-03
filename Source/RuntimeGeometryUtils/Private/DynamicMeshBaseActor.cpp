@@ -38,6 +38,8 @@
 #include "DynamicMeshEditor.h"
 #include "DynamicMesh/DynamicMeshAttributeSet.h"
 #include "DynamicMesh/DynamicVertexSkinWeightsAttribute.h"
+#include "Misc/FileHelper.h"
+
 
 using namespace UE::Geometry;
 
@@ -922,8 +924,8 @@ namespace SplitMeshInternal
 		}
 	}
 
-static bool SplitMesh(const FDynamicMesh3* InSourceMesh, TArray<FDynamicMesh3>& SplitMeshes,
-	TFunctionRef<int(int)> TriIDToMeshID)
+	static bool SplitMesh(const FDynamicMesh3* InSourceMesh, TArray<FDynamicMesh3>& SplitMeshes,
+		TFunctionRef<int(int)> TriIDToMeshID)
 {
 	using namespace SplitMeshInternal;
 	
@@ -1055,6 +1057,7 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
                                              FVector PlaneNormal,  float CutUVScale)
 {
 	auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
+
 	SourceMesh.EnableAttributes();
 
 	// 给三角形添加 Object Index 属性
@@ -1071,30 +1074,31 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 	FVector LocalNormal = WorldToLocal.TransformVector(PlaneNormal);
 
 	// 使用相对更"原始"的MeshPlaneCut,可以保留更多信息
-	FDynamicMesh3 ResultMesh;
-	ResultMesh.Copy(SourceMesh,true,true,true,true);
+	TSharedPtr<FDynamicMesh3> ResultMesh = MakeShared<FDynamicMesh3>();
+	ResultMesh->Copy(SourceMesh,true,true,true,true);
 	
-	FMeshPlaneCut Cut(&ResultMesh, LocalOrigin, LocalNormal);
+	FMeshPlaneCut Cut(ResultMesh.Get(), LocalOrigin, LocalNormal);
 	Cut.UVScaleFactor = CutUVScale;
-	Cut.bSimplifyAlongNewEdges = true;
+	Cut.bSimplifyAlongNewEdges = false;
 
 	int MaxSubObjectID = -1;
 
-	for (int TID : ResultMesh.TriangleIndicesItr())
+	for (int TID : ResultMesh->TriangleIndicesItr())
 	{
 		MaxSubObjectID = FMath::Max(MaxSubObjectID, SubObjectAttrib->GetValue(TID));
 	}
+
 	
 	Cut.CutWithoutDelete(true, 0, SubObjectAttrib, MaxSubObjectID+1);
 	Cut.HoleFill(ConstrainedDelaunayTriangulate<double>, true);	
 	Cut.TransferTriangleLabelsToHoleFillTriangles(SubObjectAttrib);
 
 	// 初始化/设置IsShell属性，该属性会不断往下传递
-	SetIsShell(ResultMesh, Cut);
+	SetIsShell(*ResultMesh, Cut);
 	
 	// 根据三角形的SubObjectAttrib划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
-	bool bSucceeded = SplitMeshInternal::SplitMesh(&ResultMesh,SplitMeshes,[SubObjectAttrib](int TID)
+	bool bSucceeded = SplitMeshInternal::SplitMesh(ResultMesh.Get(), SplitMeshes, [SubObjectAttrib](int TID)
 		{
 			return SubObjectAttrib->GetValue(TID);
 		});
