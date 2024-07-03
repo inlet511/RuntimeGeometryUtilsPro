@@ -35,6 +35,9 @@
 #include "../Public/Generators/FDelaunayGenrator.h"
 #include "CuttingOps/PlaneCutOp.h"
 #include "Operations/MeshPlaneCut.h"
+#include "DynamicMeshEditor.h"
+#include "DynamicMesh/DynamicMeshAttributeSet.h"
+#include "DynamicMesh/DynamicVertexSkinWeightsAttribute.h"
 
 using namespace UE::Geometry;
 
@@ -721,24 +724,24 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 	UE_LOG(LogTemp, Warning, TEXT("Plane Cut cost : %f ms"), End-Start);
 }
 
-void ADynamicMeshBaseActor::SetIsShell(const FMeshPlaneCut& Cut)
+void ADynamicMeshBaseActor::SetIsShell(FDynamicMesh3& InSourceMesh, const FMeshPlaneCut& Cut)
 {
 	// 给三角形添加"IsShell"属性, 表示最初的外层壳
 	const FName IsShellName = "bIsShell";
 	TDynamicMeshScalarTriangleAttribute<bool>* IsShellAtt = nullptr;
 	
-	if(SourceMesh.Attributes())
+	if(InSourceMesh.Attributes())
 	{
 		// 模型包含 IsShell 属性, 直接添加
-		if(SourceMesh.Attributes()->HasAttachedAttribute(IsShellName))
+		if(InSourceMesh.Attributes()->HasAttachedAttribute(IsShellName))
 		{
-			IsShellAtt = static_cast<TDynamicMeshScalarTriangleAttribute<bool>*>(SourceMesh.Attributes()->GetAttachedAttribute(IsShellName));
+			IsShellAtt = static_cast<TDynamicMeshScalarTriangleAttribute<bool>*>(InSourceMesh.Attributes()->GetAttachedAttribute(IsShellName));
 		}
 		else // 模型不包含 IsShell 属性, 需要添加
 		{
-			IsShellAtt = new TDynamicMeshScalarTriangleAttribute<bool>(&SourceMesh);
+			IsShellAtt = new TDynamicMeshScalarTriangleAttribute<bool>(&InSourceMesh);
 			IsShellAtt->Initialize(true); //初始化时都为true
-			SourceMesh.Attributes()->AttachAttribute(IsShellName, IsShellAtt);
+			InSourceMesh.Attributes()->AttachAttribute(IsShellName, IsShellAtt);
 		}
 	}	
 	
@@ -757,13 +760,307 @@ void ADynamicMeshBaseActor::SetIsShell(const FMeshPlaneCut& Cut)
 	}
 }
 
+namespace SplitMeshInternal
+{
+	static int AppendTriangleUVAttribute(const FDynamicMesh3* FromMesh, int FromElementID, FDynamicMesh3* ToMesh, int UVLayerIndex, FMeshIndexMappings& IndexMaps)
+	{
+		int NewElementID = IndexMaps.GetNewUV(UVLayerIndex, FromElementID);
+		if (NewElementID == IndexMaps.InvalidID())
+		{
+			const FDynamicMeshUVOverlay* FromUVOverlay = FromMesh->Attributes()->GetUVLayer(UVLayerIndex);
+			FDynamicMeshUVOverlay* ToUVOverlay = ToMesh->Attributes()->GetUVLayer(UVLayerIndex);
+			NewElementID = ToUVOverlay->AppendElement(FromUVOverlay->GetElement(FromElementID));
+			IndexMaps.SetUV(UVLayerIndex, FromElementID, NewElementID);
+		}
+		return NewElementID;
+	}
+
+	static int AppendTriangleColorAttribute(const FDynamicMesh3* FromMesh, int FromElementID, FDynamicMesh3* ToMesh, FMeshIndexMappings& IndexMaps)
+	{
+		int NewElementID = IndexMaps.GetNewColor(FromElementID);
+		if (NewElementID == IndexMaps.InvalidID())
+		{
+			const FDynamicMeshColorOverlay* FromOverlay = FromMesh->Attributes()->PrimaryColors();
+			FDynamicMeshColorOverlay* ToOverlay = ToMesh->Attributes()->PrimaryColors();
+			NewElementID = ToOverlay->AppendElement(FromOverlay->GetElement(FromElementID));
+			IndexMaps.SetColor(FromElementID, NewElementID);
+		}
+		return NewElementID;
+	}
+
+	static int AppendTriangleNormalAttribute(const FDynamicMesh3* FromMesh, int FromElementID, FDynamicMesh3* ToMesh, int NormalLayerIndex, FMeshIndexMappings& IndexMaps)
+	{
+		int NewElementID = IndexMaps.GetNewNormal(NormalLayerIndex, FromElementID);
+		if (NewElementID == IndexMaps.InvalidID())
+		{
+			const FDynamicMeshNormalOverlay* FromNormalOverlay = FromMesh->Attributes()->GetNormalLayer(NormalLayerIndex);
+			FDynamicMeshNormalOverlay* ToNormalOverlay = ToMesh->Attributes()->GetNormalLayer(NormalLayerIndex);
+			NewElementID = ToNormalOverlay->AppendElement(FromNormalOverlay->GetElement(FromElementID));
+			IndexMaps.SetNormal(NormalLayerIndex, FromElementID, NewElementID);
+		}
+		return NewElementID;
+	}
+
+	static void AppendTriangleAttributes(const FDynamicMesh3* FromMesh, int FromTriangleID, FDynamicMesh3* ToMesh, int ToTriangleID, FMeshIndexMappings& IndexMaps, FDynamicMeshEditResult& ResultOut)
+	{
+		if (FromMesh->HasAttributes() == false || ToMesh->HasAttributes() == false)
+		{
+			return;
+		}
+
+
+		for (int UVLayerIndex = 0; UVLayerIndex < FMath::Min(FromMesh->Attributes()->NumUVLayers(), ToMesh->Attributes()->NumUVLayers()); UVLayerIndex++)
+		{
+			const FDynamicMeshUVOverlay* FromUVOverlay = FromMesh->Attributes()->GetUVLayer(UVLayerIndex);
+			FDynamicMeshUVOverlay* ToUVOverlay = ToMesh->Attributes()->GetUVLayer(UVLayerIndex);
+			if (FromUVOverlay->IsSetTriangle(FromTriangleID))
+			{
+				FIndex3i FromElemTri = FromUVOverlay->GetTriangle(FromTriangleID);
+				FIndex3i ToElemTri = ToUVOverlay->GetTriangle(ToTriangleID);
+				for (int j = 0; j < 3; ++j)
+				{
+					check(FromElemTri[j] != FDynamicMesh3::InvalidID);
+					int NewElemID = AppendTriangleUVAttribute(FromMesh, FromElemTri[j], ToMesh, UVLayerIndex, IndexMaps);
+					ToElemTri[j] = NewElemID;
+				}
+				ToUVOverlay->SetTriangle(ToTriangleID, ToElemTri);
+			}
+		}
+
+
+		for (int NormalLayerIndex = 0; NormalLayerIndex < FMath::Min(FromMesh->Attributes()->NumNormalLayers(), ToMesh->Attributes()->NumNormalLayers()); NormalLayerIndex++)
+		{
+			const FDynamicMeshNormalOverlay* FromNormalOverlay = FromMesh->Attributes()->GetNormalLayer(NormalLayerIndex);
+			FDynamicMeshNormalOverlay* ToNormalOverlay = ToMesh->Attributes()->GetNormalLayer(NormalLayerIndex);
+			if (FromNormalOverlay->IsSetTriangle(FromTriangleID))
+			{
+				FIndex3i FromElemTri = FromNormalOverlay->GetTriangle(FromTriangleID);
+				FIndex3i ToElemTri = ToNormalOverlay->GetTriangle(ToTriangleID);
+				for (int j = 0; j < 3; ++j)
+				{
+					check(FromElemTri[j] != FDynamicMesh3::InvalidID);
+					int NewElemID = AppendTriangleNormalAttribute(FromMesh, FromElemTri[j], ToMesh, NormalLayerIndex, IndexMaps);
+					ToElemTri[j] = NewElemID;
+				}
+				ToNormalOverlay->SetTriangle(ToTriangleID, ToElemTri);
+			}
+		}
+
+		if (FromMesh->Attributes()->HasPrimaryColors() && ToMesh->Attributes()->HasPrimaryColors())
+		{
+			const FDynamicMeshColorOverlay* FromOverlay = FromMesh->Attributes()->PrimaryColors();
+			FDynamicMeshColorOverlay* ToOverlay = ToMesh->Attributes()->PrimaryColors();
+			if (FromOverlay->IsSetTriangle(FromTriangleID))
+			{
+				FIndex3i FromElemTri = FromOverlay->GetTriangle(FromTriangleID);
+				FIndex3i ToElemTri = ToOverlay->GetTriangle(ToTriangleID);
+				for (int j = 0; j < 3; ++j)
+				{
+					check(FromElemTri[j] != FDynamicMesh3::InvalidID);
+					int NewElemID = AppendTriangleColorAttribute(FromMesh, FromElemTri[j], ToMesh, IndexMaps);
+					ToElemTri[j] = NewElemID;
+				}
+				ToOverlay->SetTriangle(ToTriangleID, ToElemTri);
+			}
+		}
+
+		if (FromMesh->Attributes()->HasMaterialID() && ToMesh->Attributes()->HasMaterialID())
+		{
+			const FDynamicMeshMaterialAttribute* FromMaterialIDs = FromMesh->Attributes()->GetMaterialID();
+			FDynamicMeshMaterialAttribute* ToMaterialIDs = ToMesh->Attributes()->GetMaterialID();
+			ToMaterialIDs->SetValue(ToTriangleID, FromMaterialIDs->GetValue(FromTriangleID));
+		}
+
+		int NumPolygroupLayers = FMath::Min(FromMesh->Attributes()->NumPolygroupLayers(), ToMesh->Attributes()->NumPolygroupLayers());
+		for (int PolygroupLayerIndex = 0; PolygroupLayerIndex < NumPolygroupLayers; PolygroupLayerIndex++)
+		{
+			// TODO: remap groups? this will be somewhat expensive...
+			const FDynamicMeshPolygroupAttribute* FromPolygroups = FromMesh->Attributes()->GetPolygroupLayer(PolygroupLayerIndex);
+			FDynamicMeshPolygroupAttribute* ToPolygroups = ToMesh->Attributes()->GetPolygroupLayer(PolygroupLayerIndex);
+			ToPolygroups->SetValue(ToTriangleID, FromPolygroups->GetValue(FromTriangleID));
+		}
+	}
+
+	static void AppendVertexAttributes(const FDynamicMesh3* FromMesh, FDynamicMesh3* ToMesh, FMeshIndexMappings& IndexMaps)
+	{
+
+		if (FromMesh->HasAttributes() == false || ToMesh->HasAttributes() == false)
+		{
+			return;
+		}
+
+		int NumWeightLayers = FMath::Min(FromMesh->Attributes()->NumWeightLayers(), ToMesh->Attributes()->NumWeightLayers());
+		for (int WeightLayerIndex = 0; WeightLayerIndex < NumWeightLayers; WeightLayerIndex++)
+		{
+			const FDynamicMeshWeightAttribute* FromWeights = FromMesh->Attributes()->GetWeightLayer(WeightLayerIndex);
+			FDynamicMeshWeightAttribute* ToWeights = ToMesh->Attributes()->GetWeightLayer(WeightLayerIndex);
+			for (const TPair<int32, int32>& MapVID : IndexMaps.GetVertexMap().GetForwardMap())
+			{
+				float Weight;
+				FromWeights->GetValue(MapVID.Key, &Weight);
+				ToWeights->SetValue(MapVID.Value, &Weight);
+			}
+		}
+	
+		// Copy skin weight and generic attributes after full IndexMaps have been created. 	
+		for (const TPair<FName, TUniquePtr<FDynamicMeshVertexSkinWeightsAttribute>>& AttribPair : FromMesh->Attributes()->GetSkinWeightsAttributes())
+		{
+			FDynamicMeshVertexSkinWeightsAttribute* ToAttrib = ToMesh->Attributes()->GetSkinWeightsAttribute(AttribPair.Key);
+			if (ToAttrib)
+			{
+				ToAttrib->CopyThroughMapping(AttribPair.Value.Get(), IndexMaps);
+			}
+		}
+	
+		for (const TPair<FName, TUniquePtr<FDynamicMeshAttributeBase>>& AttribPair : FromMesh->Attributes()->GetAttachedAttributes())
+		{
+			if (ToMesh->Attributes()->HasAttachedAttribute(AttribPair.Key))
+			{
+				FDynamicMeshAttributeBase* ToAttrib = ToMesh->Attributes()->GetAttachedAttribute(AttribPair.Key);
+				ToAttrib->CopyThroughMapping(AttribPair.Value.Get(), IndexMaps);
+			}
+		}
+	}
+
+static bool SplitMesh(const FDynamicMesh3* InSourceMesh, TArray<FDynamicMesh3>& SplitMeshes,
+	TFunctionRef<int(int)> TriIDToMeshID)
+{
+	using namespace SplitMeshInternal;
+	
+	TMap<int, int> MeshIDToIndex;
+	int NumMeshes = 0;
+	bool bAlsoDelete = false;
+	for (int TID : InSourceMesh->TriangleIndicesItr())
+	{
+		int MeshID = TriIDToMeshID(TID);
+		
+		if (!MeshIDToIndex.Contains(MeshID))
+		{
+			MeshIDToIndex.Add(MeshID, NumMeshes++);
+		}
+	}
+
+	if (!bAlsoDelete && NumMeshes < 2)
+	{
+		return false; // nothing to do, so don't bother filling the split meshes array
+	}
+
+	SplitMeshes.Reset();
+	SplitMeshes.SetNum(NumMeshes);
+	// enable matching attributes
+	for (FDynamicMesh3& M : SplitMeshes)
+	{
+		M.EnableMeshComponents(InSourceMesh->GetComponentsFlags());
+		if (InSourceMesh->HasAttributes())
+		{
+			M.EnableAttributes();
+			M.Attributes()->EnableMatchingAttributes(*InSourceMesh->Attributes(),false,false);
+		}
+	}
+
+	if (NumMeshes == 0) // full delete case, just leave the empty mesh
+	{
+		return true;
+	}
+
+	TArray<FMeshIndexMappings> Mappings; Mappings.Reserve(NumMeshes);
+	FDynamicMeshEditResult UnusedInvalidResultAccumulator; // only here because some functions require it
+	for (int Idx = 0; Idx < NumMeshes; Idx++)
+	{
+		FMeshIndexMappings& Map = Mappings.Emplace_GetRef();
+		Map.Initialize(&SplitMeshes[Idx]);
+	}
+
+	for (int SourceTID : InSourceMesh->TriangleIndicesItr())
+	{
+		int MeshID = TriIDToMeshID(SourceTID);
+
+		int MeshIndex = MeshIDToIndex[MeshID];
+		FDynamicMesh3& Mesh = SplitMeshes[MeshIndex];
+		FMeshIndexMappings& IndexMaps = Mappings[MeshIndex];
+
+		FIndex3i Tri = InSourceMesh->GetTriangle(SourceTID);
+
+		// Find or create corresponding triangle group
+		int NewGID = FDynamicMesh3::InvalidID;
+		if (InSourceMesh->HasTriangleGroups())
+		{
+			int SourceGroupID = InSourceMesh->GetTriangleGroup(SourceTID);
+			if (SourceGroupID >= 0)
+			{
+				NewGID = IndexMaps.GetNewGroup(SourceGroupID);
+				if (NewGID == IndexMaps.InvalidID())
+				{
+					NewGID = Mesh.AllocateTriangleGroup();
+					IndexMaps.SetGroup(SourceGroupID, NewGID);
+				}
+			}
+		}
+
+		bool bCreatedNewVertex[3] = {false, false, false};
+		FIndex3i NewTri;
+		for (int j = 0; j < 3; ++j)
+		{
+			int SourceVID = Tri[j];
+			int NewVID = IndexMaps.GetNewVertex(SourceVID);
+			if (NewVID == IndexMaps.InvalidID())
+			{
+				bCreatedNewVertex[j] = true;
+				NewVID = Mesh.AppendVertex(*InSourceMesh, SourceVID);
+				IndexMaps.SetVertex(SourceVID, NewVID);
+			}
+			NewTri[j] = NewVID;
+		}
+
+		int NewTID = Mesh.AppendTriangle(NewTri, NewGID);
+
+		// conceivably this should never happen, but it did occur due to other mesh issues,
+		// and it can be handled here without much effort
+		if (NewTID < 0)
+		{
+			// append failed, try creating separate new vertices
+			for (int j = 0; j < 3; ++j)
+			{
+				if ( bCreatedNewVertex[j] == false )
+				{
+					int SourceVID = Tri[j];
+					NewTri[j] = Mesh.AppendVertex(*InSourceMesh, SourceVID);
+				}
+			}
+			NewTID = Mesh.AppendTriangle(NewTri, NewGID);
+		}
+
+		if ( NewTID >= 0 )
+		{
+			IndexMaps.SetTriangle(SourceTID, NewTID);
+			AppendTriangleAttributes(InSourceMesh, SourceTID, &Mesh, NewTID, IndexMaps, UnusedInvalidResultAccumulator);
+		}
+		else
+		{
+			checkSlow(false);
+			// something has gone very wrong, skip this triangle
+		}
+	}
+
+	for (int Idx = 0; Idx < NumMeshes; Idx++)
+	{
+		AppendVertexAttributes(InSourceMesh, &SplitMeshes[Idx], Mappings[Idx]);
+	}
+	
+	return true;
+	}
+}
+
 void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor, FVector PlaneOrigin,
                                              FVector PlaneNormal,  float CutUVScale)
 {
 	auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
-	// 给三角形添加自定义属性
+	SourceMesh.EnableAttributes();
+
+	// 给三角形添加 Object Index 属性
 	const FName ObjectIndexAttribute = "ObjectIndexAttribute";
 	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
+	SubObjectAttrib->SetName(ObjectIndexAttribute);
 	SubObjectAttrib->Initialize(0);
 	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);	
 
@@ -789,16 +1086,15 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 	}
 	
 	Cut.CutWithoutDelete(true, 0, SubObjectAttrib, MaxSubObjectID+1);
-	Cut.HoleFill(ConstrainedDelaunayTriangulate<double>, true);
-	
+	Cut.HoleFill(ConstrainedDelaunayTriangulate<double>, true);	
 	Cut.TransferTriangleLabelsToHoleFillTriangles(SubObjectAttrib);
 
 	// 初始化/设置IsShell属性，该属性会不断往下传递
-	SetIsShell(Cut);
+	SetIsShell(ResultMesh, Cut);
 	
 	// 根据三角形的SubObjectAttrib划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
-	bool bSucceeded = FDynamicMeshEditor::SplitMesh(&ResultMesh,SplitMeshes,[SubObjectAttrib](int TID)
+	bool bSucceeded = SplitMeshInternal::SplitMesh(&ResultMesh,SplitMeshes,[SubObjectAttrib](int TID)
 		{
 			return SubObjectAttrib->GetValue(TID);
 		});

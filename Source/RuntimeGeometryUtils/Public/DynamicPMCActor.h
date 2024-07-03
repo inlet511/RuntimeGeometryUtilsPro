@@ -8,7 +8,7 @@
 
 
 
-UCLASS()
+UCLASS(HideCategories=("Materials"))
 class RUNTIMEGEOMETRYUTILS_API ADynamicPMCActor : public ADynamicMeshBaseActor
 {
 	GENERATED_BODY()

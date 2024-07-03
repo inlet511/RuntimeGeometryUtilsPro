@@ -10,6 +10,7 @@
 
 using namespace UE::Geometry;
 
+UE_DISABLE_OPTIMIZATION
 
 void RTGUtils::UpdateStaticMeshFromDynamicMesh(
 	UStaticMesh* StaticMesh,
@@ -42,7 +43,7 @@ void RTGUtils::UpdateStaticMeshFromDynamicMesh(
 
 
 
-bool RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
+void RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 	UProceduralMeshComponent* Component, 
 	FDynamicMesh3* Mesh,
 	bool bUseFaceNormals,
@@ -53,10 +54,9 @@ bool RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 	using namespace UE::Geometry;
 
 	if(Mesh==nullptr)
-		return false;
+		return;
 	
 	Component->ClearAllMeshSections();
-	
 	
 	int32 NumTriangles = Mesh->TriangleCount();
 	int32 NumVertices = NumTriangles * 3;
@@ -95,27 +95,22 @@ bool RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 
 	TArray<FProcMeshTangent> Tangents;		// not supporting this for now
 
-	TArray<int32> Triangles;
-	Triangles.Empty();
+	TArray<int32> Triangles_Shell;
+	Triangles_Shell.Empty();
 	
 	TArray<int32> Triangles_CutSection;
 	Triangles_CutSection.Empty();
-
 	
-	FName IsShellName = "bIsShell";
-	bool bHasShellAtt; // 是否具有 IsShell这个属性
-	if(Mesh->Attributes())
+	FName IsShellName = "bIsShell";	
+	TDynamicMeshScalarTriangleAttribute<bool>* IsShellAtt = nullptr;
+	bool bMeshHasAttributes = Mesh->Attributes() != nullptr;
+	bool bMeshHasShellAttribute = false;
+	if(bMeshHasAttributes)
+		bMeshHasShellAttribute = Mesh->Attributes()->HasAttachedAttribute(IsShellName);
+	UE_LOG(LogTemp, Warning, TEXT("MeshName: %s, HasAttributes: %s, HasShellAttributes: %s"), *Component->GetOwner()->GetActorLabel(), bMeshHasAttributes ? TEXT("true") : TEXT("false"), bMeshHasShellAttribute ? TEXT("true"):TEXT("false"));
+	if(Mesh->Attributes() &&  Mesh->Attributes()->HasAttachedAttribute(IsShellName)) //是否具有 IsShell这个属性
 	{
-		bHasShellAtt = Mesh->Attributes()->HasAttachedAttribute(IsShellName);
-	}
-	else
-	{
-		bHasShellAtt = false;	
-	}
-	TDynamicMeshScalarTriangleAttribute<bool>* IsCutSection = nullptr;
-	if(bHasShellAtt)
-	{
-		IsCutSection = static_cast<TDynamicMeshScalarTriangleAttribute<bool>*>(Mesh->Attributes()->GetAttachedAttribute(IsShellName));
+		IsShellAtt = static_cast<TDynamicMeshScalarTriangleAttribute<bool>*>(Mesh->Attributes()->GetAttachedAttribute(IsShellName));
 	}
 	
 	
@@ -123,6 +118,7 @@ bool RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 	FVector3f Normal[3];
 	FVector2f UV[3];
 	int32 BufferIndex = 0;
+	
 	for (int32 tid : Mesh->TriangleIndicesItr())
 	{		
 		int32 k = 3 * (BufferIndex++);
@@ -170,38 +166,25 @@ bool RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 			VtxColors[k+1] = (FLinearColor)Mesh->GetVertexColor(TriVerts.B);
 			VtxColors[k+2] = (FLinearColor)Mesh->GetVertexColor(TriVerts.C);
 		}
-
-
-		// 获取是否是裁切面		
-		if(bHasShellAtt)
+		
+		// 没有IsShell属性，则是初始模型，只添加外壳部分
+		// 或者有IsShell属性 并且是Shell
+		if(!IsShellAtt || IsShellAtt->GetValue(tid)) 
 		{
-			bool bIsCutPlane = IsCutSection->GetValue(tid);
-			if(bIsCutPlane)
-			{
-				Triangles_CutSection.Add(k);
-				Triangles_CutSection.Add(k+1);
-				Triangles_CutSection.Add(k+2);
-			}
-			else
-			{
-				Triangles.Add(k);
-				Triangles.Add(k+1);
-				Triangles.Add(k+2);
-			}
+			Triangles_Shell.Add(k);
+			Triangles_Shell.Add(k+1);
+			Triangles_Shell.Add(k+2);
 		}
-		else // No Cut Plane Section
+		else
 		{
-			Triangles.Add(k);
-			Triangles.Add(k+1);
-			Triangles.Add(k+2);
-		}		
+			Triangles_CutSection.Add(k);
+			Triangles_CutSection.Add(k+1);
+			Triangles_CutSection.Add(k+2);
+		}	
 	}
 
-	Component->CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals, UV0, VtxColors, Tangents, bCreateCollision);
-	if(bHasShellAtt)
-	{
-		Component->CreateMeshSection_LinearColor(1, Vertices, Triangles_CutSection, Normals, UV0, VtxColors, Tangents, bCreateCollision);
-		return true;
-	}
-	return false;
+	Component->CreateMeshSection_LinearColor(0, Vertices, Triangles_Shell, Normals, UV0, VtxColors, Tangents, bCreateCollision);
+	Component->CreateMeshSection_LinearColor(1, Vertices, Triangles_CutSection, Normals, UV0, VtxColors, Tangents, bCreateCollision);
 }
+
+UE_ENABLE_OPTIMIZATION

@@ -27,7 +27,7 @@ namespace RTGUtils
 	 * @param bInitializeUV0 if true, UV0 is initialized, otherwise it is not (set to 0)
 	 * @param bInitializePerVertexColors if true, per-vertex colors on the FDynamicMesh3 are used to initialize vertex colors of the PMC
 	 */
-	RUNTIMEGEOMETRYUTILS_API bool UpdatePMCFromDynamicMesh_SplitTriangles(
+	RUNTIMEGEOMETRYUTILS_API void UpdatePMCFromDynamicMesh_SplitTriangles(
 		UProceduralMeshComponent* Component, 
 		FDynamicMesh3* Mesh,
 		bool bUseFaceNormals,
