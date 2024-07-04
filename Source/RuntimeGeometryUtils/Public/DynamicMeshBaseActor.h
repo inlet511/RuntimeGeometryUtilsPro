@@ -138,7 +138,7 @@ public:
 	// 
 
 	/** Path to OBJ file read to initialize mesh in SourceType=Imported mode */
-	UPROPERTY(EditAnywhere, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
 	FString ImportPath;
 
 	/** Whether the imported mesh should have it's triangles reversed (commonly required for meshes authored in DCC tools) */
@@ -150,7 +150,7 @@ public:
 	bool bCenterPivot = true;
 
 	/** Uniform scaling applied to the imported mesh (baked into the mesh vertices, not the actor Transform) */
-	UPROPERTY(EditAnywhere, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite,Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
 	float ImportScale = 1.0;
 
 
