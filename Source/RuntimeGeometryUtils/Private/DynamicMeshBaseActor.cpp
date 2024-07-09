@@ -39,6 +39,7 @@
 #include "DynamicMesh/DynamicMeshAttributeSet.h"
 #include "DynamicMesh/DynamicVertexSkinWeightsAttribute.h"
 #include "Misc/FileHelper.h"
+#include "MeshComponentRuntimeUtils.h"
 
 
 using namespace UE::Geometry;
@@ -199,6 +200,16 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			FDelaunayGenrator DelaunayGenrator;
 			DelaunayGenrator.InputVertices = RandomPoints;
 			MeshOut.Copy(&DelaunayGenrator.Generate());
+		}
+		else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::MarchingCubes)
+		{
+			if(SpatialPoints.Num() < 3)
+				return;
+			FMarchingCubes MarchingCubes;
+			MarchingCubes.CubeSize = 10.0f;
+			// find the bounds
+			RTGUtils::FindAABounds(MarchingCubes.Bounds,SpatialPoints);
+			
 		}
 		
 

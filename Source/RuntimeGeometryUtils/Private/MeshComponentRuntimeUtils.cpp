@@ -6,11 +6,10 @@
 #include "DynamicMeshToMeshDescription.h"
 #include "StaticMeshAttributes.h"
 #include "Engine/StaticMesh.h"
+#include "BoxTypes.h"
 
 
 using namespace UE::Geometry;
-
-UE_DISABLE_OPTIMIZATION
 
 void RTGUtils::UpdateStaticMeshFromDynamicMesh(
 	UStaticMesh* StaticMesh,
@@ -187,4 +186,10 @@ void RTGUtils::UpdatePMCFromDynamicMesh_SplitTriangles(
 	Component->CreateMeshSection_LinearColor(1, Vertices, Triangles_CutSection, Normals, UV0, VtxColors, Tangents, bCreateCollision);
 }
 
-UE_ENABLE_OPTIMIZATION
+void RTGUtils::FindAABounds(TAxisAlignedBox3<double>& ResultBounds, TArray<FVector> PointArray)
+{
+	for (const FVector& Point : PointArray)
+	{
+		ResultBounds.Contain(Point);
+	}
+}

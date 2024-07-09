@@ -35,4 +35,6 @@ namespace RTGUtils
 		bool bInitializePerVertexColors,
 		bool bCreateCollision);
 
+
+	RUNTIMEGEOMETRYUTILS_API void FindAABounds(TAxisAlignedBox3<double>& ResultBounds, TArray<FVector> PointArray);
 }

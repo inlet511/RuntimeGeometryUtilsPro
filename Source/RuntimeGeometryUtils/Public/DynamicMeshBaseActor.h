@@ -47,7 +47,8 @@ enum class EDynamicMeshActorPrimitiveType : uint8
 	Box,
 	ConvexHull,
 	RandomPoints,
-	Delaunay
+	Delaunay,
+	MarchingCubes
 };
 
 
@@ -195,6 +196,17 @@ public:
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (UIMin = 0, EditCondition = "SourceType == EDynamicMeshActorSourceType::FromStaticMesh", EditConditionHides))
 	UStaticMesh* RefStaticMesh;
 
+	// 用于生成MarchingCube的测试点
+	UPROPERTY(BlueprintReadWrite, Category = MarchingCubes)
+	TArray<FVector3d> SpatialPoints;
+
+	UPROPERTY(EditAnywhere, Category = MarchingCubes)
+	float Cubesize;
+
+	UPROPERTY(EditAnywhere, Category = MarchingCubes)
+	float IsoValue;
+
+	
 
 	//
 	// ADynamicMeshBaseActor API
