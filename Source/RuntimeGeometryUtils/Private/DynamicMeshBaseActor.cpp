@@ -206,13 +206,30 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			if(SpatialPoints.Num() < 3)
 				return;
 			FMarchingCubes MarchingCubes;
-			MarchingCubes.CubeSize = 10.0f;
+			MarchingCubes.CubeSize = Cubesize;
 			// find the bounds
-			RTGUtils::FindAABounds(MarchingCubes.Bounds,SpatialPoints);
+			TAxisAlignedBox3<double> Bounds;
+			RTGUtils::FindAABounds(Bounds,SpatialPoints);
 			
-		}
-		
+			MarchingCubes.Bounds = Bounds;
+			MarchingCubes.IsoValue = 1.0f;
+			MarchingCubes.RootMode = ERootfindingModes::Bisection;
+			MarchingCubes.RootModeSteps = 4;
+			
+			MarchingCubes.Implicit = [this](const FVector3d& Pos)->double
+			{
+				double MinDist = BIG_NUMBER;
+				for(auto P : SpatialPoints)
+				{
+					const double distance = FVector3d::Dist(Pos, P);
+					if(distance < MinDist)
+						MinDist = distance;
+				}
+				return 10/MinDist;				
+			};
 
+			MeshOut.Copy(&MarchingCubes.Generate());			
+		}	
 	}
 	else if (SourceType == EDynamicMeshActorSourceType::ImportedMesh)
 	{
