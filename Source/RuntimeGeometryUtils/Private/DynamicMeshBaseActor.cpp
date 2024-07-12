@@ -229,16 +229,18 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			MarchingCubes.bParallelCompute = true;
 			MarchingCubes.Implicit = [this](const FVector3d& Pos)->double
 				{
-					//double MinDist = BIG_NUMBER;
-					double finalValue = 0;
+					double MinDist = BIG_NUMBER;
 					for (auto P : SpatialPoints)
 					{
-						const double distance = FVector3d::Dist(Pos, P->GetActorLocation());
-						finalValue += (P->Value)/ distance;
+						double distance = FVector3d::Dist(Pos, P->GetActorLocation());
+						
+						
+						if(distance < MinDist)
+						{
+							MinDist = distance;
+						}
 					}
-					UE_LOG(LogTemp, Warning, TEXT("Value:%f"), finalValue);
-					return finalValue;
-					
+					return 100/MinDist;
 				};
 
 			MeshOut.Copy(&MarchingCubes.Generate());
