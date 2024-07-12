@@ -198,7 +198,7 @@ public:
 
 	// 用于生成MarchingCube的测试点
 	UPROPERTY(BlueprintReadWrite, Category = MarchingCubes)
-	TArray<FVector> SpatialPoints;
+	TArray<class AProbe*> SpatialPoints;
 
 	UPROPERTY(EditAnywhere, Category = MarchingCubes)
 	float Cubesize;

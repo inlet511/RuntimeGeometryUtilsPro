@@ -40,6 +40,7 @@
 #include "DynamicMesh/DynamicVertexSkinWeightsAttribute.h"
 #include "Misc/FileHelper.h"
 #include "MeshComponentRuntimeUtils.h"
+#include "Probe.h"
 
 
 using namespace UE::Geometry;
@@ -153,7 +154,7 @@ void ADynamicMeshBaseActor::OnMeshGenerationSettingsModified()
 
 void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 {
-	if(SourceType == EDynamicMeshActorSourceType::None)
+	if (SourceType == EDynamicMeshActorSourceType::None)
 	{
 		// Do Nothing.
 	}
@@ -170,7 +171,7 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			SphereGen.Radius = UseRadius;
 			MeshOut.Copy(&SphereGen.Generate());
 		}
-		else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::Box)
+		else if (this->PrimitiveType == EDynamicMeshActorPrimitiveType::Box)
 		{
 			FGridBoxMeshGenerator BoxGen;
 			int TessLevel = FMath::Clamp(this->TessellationLevel, 2, 50);
@@ -179,57 +180,69 @@ void ADynamicMeshBaseActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			BoxExtents.Z *= BoxDepthRatio;
 			BoxGen.Box = FOrientedBox3d(FVector3d::Zero(), BoxExtents);
 			MeshOut.Copy(&BoxGen.Generate());
-		}else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::ConvexHull)
+		}
+		else if (this->PrimitiveType == EDynamicMeshActorPrimitiveType::ConvexHull)
 		{
-			if(RandomPoints.Num()<3)
+			if (RandomPoints.Num() < 3)
 				return;
 			FConvexHullGenerator ConvexHullGenerator;
 			ConvexHullGenerator.InputVertices = RandomPoints;
 			MeshOut.Copy(&ConvexHullGenerator.Generate());
-		}else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::RandomPoints)
+		}
+		else if (this->PrimitiveType == EDynamicMeshActorPrimitiveType::RandomPoints)
 		{
-			if(RandomPoints.Num()<3)
+			if (RandomPoints.Num() < 3)
 				return;
 			FRandomPointsMeshGenerator RandomPointsMeshGenerator;
 			RandomPointsMeshGenerator.InputVertices = RandomPoints;
 			MeshOut.Copy(&RandomPointsMeshGenerator.Generate());
-		}else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::Delaunay)
+		}
+		else if (this->PrimitiveType == EDynamicMeshActorPrimitiveType::Delaunay)
 		{
-			if(RandomPoints.Num() < 3)
+			if (RandomPoints.Num() < 3)
 				return;
 			FDelaunayGenrator DelaunayGenrator;
 			DelaunayGenrator.InputVertices = RandomPoints;
 			MeshOut.Copy(&DelaunayGenrator.Generate());
 		}
-		else if(this->PrimitiveType == EDynamicMeshActorPrimitiveType::MarchingCubes)
+		else if (this->PrimitiveType == EDynamicMeshActorPrimitiveType::MarchingCubes)
 		{
-			if(SpatialPoints.Num() < 3)
+			if (SpatialPoints.Num() < 3)
 				return;
+
+			TArray<FVector> Positions;
+			for (auto Point : SpatialPoints)
+			{
+				Positions.Add(Point->GetActorLocation());
+			}
 			FMarchingCubes MarchingCubes;
 			MarchingCubes.CubeSize = Cubesize;
 			// find the bounds
 			TAxisAlignedBox3<double> Bounds;
-			RTGUtils::FindAABounds(Bounds,SpatialPoints);
-			
+			RTGUtils::FindAABounds(Bounds, Positions);
+
 			MarchingCubes.Bounds = Bounds;
-			MarchingCubes.IsoValue = 1.0f;
+			MarchingCubes.Bounds.Expand(200);
+			MarchingCubes.IsoValue = 0.5f;
 			MarchingCubes.RootMode = ERootfindingModes::Bisection;
 			MarchingCubes.RootModeSteps = 4;
-			
+			MarchingCubes.bParallelCompute = true;
 			MarchingCubes.Implicit = [this](const FVector3d& Pos)->double
-			{
-				double MinDist = BIG_NUMBER;
-				for(auto P : SpatialPoints)
 				{
-					const double distance = FVector3d::Dist(Pos, P);
-					if(distance < MinDist)
-						MinDist = distance;
-				}
-				return 10/MinDist;				
-			};
+					//double MinDist = BIG_NUMBER;
+					double finalValue = 0;
+					for (auto P : SpatialPoints)
+					{
+						const double distance = FVector3d::Dist(Pos, P->GetActorLocation());
+						finalValue += (P->Value)/ distance;
+					}
+					UE_LOG(LogTemp, Warning, TEXT("Value:%f"), finalValue);
+					return finalValue;
+					
+				};
 
-			MeshOut.Copy(&MarchingCubes.Generate());			
-		}	
+			MeshOut.Copy(&MarchingCubes.Generate());
+		}
 	}
 	else if (SourceType == EDynamicMeshActorSourceType::ImportedMesh)
 	{
@@ -679,7 +692,7 @@ void ADynamicMeshBaseActor::WriteObj(const FString OutputPath)
 	RTGUtils::WriteOBJMesh(OutputPath, SourceMesh, true);
 }
 
-void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVector PlaneOrigin, FVector PlaneNormal, float GapWidth, bool bFillCutHole, bool bFillSpans, bool bKeepBothHalves)
+void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor, FVector PlaneOrigin, FVector PlaneNormal, float GapWidth, bool bFillCutHole, bool bFillSpans, bool bKeepBothHalves)
 {
 	auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
 	// 给三角形添加自定义属性
@@ -689,7 +702,7 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);
 
 	// 拷贝原始Mesh
-	TSharedPtr<FDynamicMesh3, ESPMode::ThreadSafe> SourceMeshPtr =  MakeShared<FDynamicMesh3, ESPMode::ThreadSafe>();
+	TSharedPtr<FDynamicMesh3, ESPMode::ThreadSafe> SourceMeshPtr = MakeShared<FDynamicMesh3, ESPMode::ThreadSafe>();
 	SourceMeshPtr->Copy(SourceMesh);
 	SourceMeshPtr->EnableAttributes();
 
@@ -716,42 +729,42 @@ void ADynamicMeshBaseActor::PlaneCut(ADynamicMeshBaseActor* OtherMeshActor,FVect
 
 	// 根据三角形的Attribute划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
-	bool bSucceeded = FDynamicMeshEditor::SplitMesh(ResultMesh.Get(),SplitMeshes,[SubMeshIDs](int TID)
+	bool bSucceeded = FDynamicMeshEditor::SplitMesh(ResultMesh.Get(), SplitMeshes, [SubMeshIDs](int TID)
 		{
 			return SubMeshIDs->GetValue(TID);
 		});
 
-	if(!bSucceeded)
+	if (!bSucceeded)
 		return;
-	
+
 	SplitMeshes[0].Attributes()->RemoveAttribute(ObjectIndexAttribute);
 	SplitMeshes[1].Attributes()->RemoveAttribute(ObjectIndexAttribute);
 
 	// 更新 "我的" Mesh
 	NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
 	EditMesh([&](FDynamicMesh3& MeshToUpdate)
-	{
-		MeshToUpdate = MoveTemp(SplitMeshes[0]);
-		RecomputeNormals(MeshToUpdate);
-	});
-	
+		{
+			MeshToUpdate = MoveTemp(SplitMeshes[0]);
+			RecomputeNormals(MeshToUpdate);
+		});
+
 
 	// 更新 "新的" Mesh
-	if(IsValid(OtherMeshActor) && SplitMeshes.Num()==2)
+	if (IsValid(OtherMeshActor) && SplitMeshes.Num() == 2)
 	{
 		OtherMeshActor->NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
 		OtherMeshActor->SetActorLocation(this->GetActorLocation());
 		OtherMeshActor->SetActorRotation(this->GetActorRotation());
 		OtherMeshActor->EditMesh([&](FDynamicMesh3& MeshToUpdate)
-		{
-			MeshToUpdate = MoveTemp(SplitMeshes[1]);
-			RecomputeNormals(MeshToUpdate);
-		});
+			{
+				MeshToUpdate = MoveTemp(SplitMeshes[1]);
+				RecomputeNormals(MeshToUpdate);
+			});
 	}
 
 	auto End = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
 
-	UE_LOG(LogTemp, Warning, TEXT("Plane Cut cost : %f ms"), End-Start);
+	UE_LOG(LogTemp, Warning, TEXT("Plane Cut cost : %f ms"), End - Start);
 }
 
 void ADynamicMeshBaseActor::SetIsShell(FDynamicMesh3& InSourceMesh, const FMeshPlaneCut& Cut)
@@ -759,11 +772,11 @@ void ADynamicMeshBaseActor::SetIsShell(FDynamicMesh3& InSourceMesh, const FMeshP
 	// 给三角形添加"IsShell"属性, 表示最初的外层壳
 	const FName IsShellName = "bIsShell";
 	TDynamicMeshScalarTriangleAttribute<bool>* IsShellAtt = nullptr;
-	
-	if(InSourceMesh.Attributes())
+
+	if (InSourceMesh.Attributes())
 	{
 		// 模型包含 IsShell 属性, 直接添加
-		if(InSourceMesh.Attributes()->HasAttachedAttribute(IsShellName))
+		if (InSourceMesh.Attributes()->HasAttachedAttribute(IsShellName))
 		{
 			IsShellAtt = static_cast<TDynamicMeshScalarTriangleAttribute<bool>*>(InSourceMesh.Attributes()->GetAttachedAttribute(IsShellName));
 		}
@@ -773,11 +786,11 @@ void ADynamicMeshBaseActor::SetIsShell(FDynamicMesh3& InSourceMesh, const FMeshP
 			IsShellAtt->Initialize(true); //初始化时都为true
 			InSourceMesh.Attributes()->AttachAttribute(IsShellName, IsShellAtt);
 		}
-	}	
-	
+	}
+
 	// 切割面上的三角形索引
 	TArray<TArray<int32>> HoleFillTriangles = Cut.HoleFillTriangles;
-	
+
 	// 设置 IsShell为 false
 	for (int BoundaryIdx = 0; BoundaryIdx < Cut.OpenBoundaries.Num(); BoundaryIdx++)
 	{
@@ -931,7 +944,7 @@ namespace SplitMeshInternal
 				ToWeights->SetValue(MapVID.Value, &Weight);
 			}
 		}
-	
+
 		// Copy skin weight and generic attributes after full IndexMaps have been created. 	
 		for (const TPair<FName, TUniquePtr<FDynamicMeshVertexSkinWeightsAttribute>>& AttribPair : FromMesh->Attributes()->GetSkinWeightsAttributes())
 		{
@@ -941,7 +954,7 @@ namespace SplitMeshInternal
 				ToAttrib->CopyThroughMapping(AttribPair.Value.Get(), IndexMaps);
 			}
 		}
-	
+
 		for (const TPair<FName, TUniquePtr<FDynamicMeshAttributeBase>>& AttribPair : FromMesh->Attributes()->GetAttachedAttributes())
 		{
 			if (ToMesh->Attributes()->HasAttachedAttribute(AttribPair.Key))
@@ -954,135 +967,135 @@ namespace SplitMeshInternal
 
 	static bool SplitMesh(const FDynamicMesh3* InSourceMesh, TArray<FDynamicMesh3>& SplitMeshes,
 		TFunctionRef<int(int)> TriIDToMeshID)
-{
-	using namespace SplitMeshInternal;
-	
-	TMap<int, int> MeshIDToIndex;
-	int NumMeshes = 0;
-	bool bAlsoDelete = false;
-	for (int TID : InSourceMesh->TriangleIndicesItr())
 	{
-		int MeshID = TriIDToMeshID(TID);
-		
-		if (!MeshIDToIndex.Contains(MeshID))
+		using namespace SplitMeshInternal;
+
+		TMap<int, int> MeshIDToIndex;
+		int NumMeshes = 0;
+		bool bAlsoDelete = false;
+		for (int TID : InSourceMesh->TriangleIndicesItr())
 		{
-			MeshIDToIndex.Add(MeshID, NumMeshes++);
-		}
-	}
+			int MeshID = TriIDToMeshID(TID);
 
-	if (!bAlsoDelete && NumMeshes < 2)
-	{
-		return false; // nothing to do, so don't bother filling the split meshes array
-	}
-
-	SplitMeshes.Reset();
-	SplitMeshes.SetNum(NumMeshes);
-	// enable matching attributes
-	for (FDynamicMesh3& M : SplitMeshes)
-	{
-		M.EnableMeshComponents(InSourceMesh->GetComponentsFlags());
-		if (InSourceMesh->HasAttributes())
-		{
-			M.EnableAttributes();
-			M.Attributes()->EnableMatchingAttributes(*InSourceMesh->Attributes(),false,false);
-		}
-	}
-
-	if (NumMeshes == 0) // full delete case, just leave the empty mesh
-	{
-		return true;
-	}
-
-	TArray<FMeshIndexMappings> Mappings; Mappings.Reserve(NumMeshes);
-	FDynamicMeshEditResult UnusedInvalidResultAccumulator; // only here because some functions require it
-	for (int Idx = 0; Idx < NumMeshes; Idx++)
-	{
-		FMeshIndexMappings& Map = Mappings.Emplace_GetRef();
-		Map.Initialize(&SplitMeshes[Idx]);
-	}
-
-	for (int SourceTID : InSourceMesh->TriangleIndicesItr())
-	{
-		int MeshID = TriIDToMeshID(SourceTID);
-
-		int MeshIndex = MeshIDToIndex[MeshID];
-		FDynamicMesh3& Mesh = SplitMeshes[MeshIndex];
-		FMeshIndexMappings& IndexMaps = Mappings[MeshIndex];
-
-		FIndex3i Tri = InSourceMesh->GetTriangle(SourceTID);
-
-		// Find or create corresponding triangle group
-		int NewGID = FDynamicMesh3::InvalidID;
-		if (InSourceMesh->HasTriangleGroups())
-		{
-			int SourceGroupID = InSourceMesh->GetTriangleGroup(SourceTID);
-			if (SourceGroupID >= 0)
+			if (!MeshIDToIndex.Contains(MeshID))
 			{
-				NewGID = IndexMaps.GetNewGroup(SourceGroupID);
-				if (NewGID == IndexMaps.InvalidID())
+				MeshIDToIndex.Add(MeshID, NumMeshes++);
+			}
+		}
+
+		if (!bAlsoDelete && NumMeshes < 2)
+		{
+			return false; // nothing to do, so don't bother filling the split meshes array
+		}
+
+		SplitMeshes.Reset();
+		SplitMeshes.SetNum(NumMeshes);
+		// enable matching attributes
+		for (FDynamicMesh3& M : SplitMeshes)
+		{
+			M.EnableMeshComponents(InSourceMesh->GetComponentsFlags());
+			if (InSourceMesh->HasAttributes())
+			{
+				M.EnableAttributes();
+				M.Attributes()->EnableMatchingAttributes(*InSourceMesh->Attributes(), false, false);
+			}
+		}
+
+		if (NumMeshes == 0) // full delete case, just leave the empty mesh
+		{
+			return true;
+		}
+
+		TArray<FMeshIndexMappings> Mappings; Mappings.Reserve(NumMeshes);
+		FDynamicMeshEditResult UnusedInvalidResultAccumulator; // only here because some functions require it
+		for (int Idx = 0; Idx < NumMeshes; Idx++)
+		{
+			FMeshIndexMappings& Map = Mappings.Emplace_GetRef();
+			Map.Initialize(&SplitMeshes[Idx]);
+		}
+
+		for (int SourceTID : InSourceMesh->TriangleIndicesItr())
+		{
+			int MeshID = TriIDToMeshID(SourceTID);
+
+			int MeshIndex = MeshIDToIndex[MeshID];
+			FDynamicMesh3& Mesh = SplitMeshes[MeshIndex];
+			FMeshIndexMappings& IndexMaps = Mappings[MeshIndex];
+
+			FIndex3i Tri = InSourceMesh->GetTriangle(SourceTID);
+
+			// Find or create corresponding triangle group
+			int NewGID = FDynamicMesh3::InvalidID;
+			if (InSourceMesh->HasTriangleGroups())
+			{
+				int SourceGroupID = InSourceMesh->GetTriangleGroup(SourceTID);
+				if (SourceGroupID >= 0)
 				{
-					NewGID = Mesh.AllocateTriangleGroup();
-					IndexMaps.SetGroup(SourceGroupID, NewGID);
+					NewGID = IndexMaps.GetNewGroup(SourceGroupID);
+					if (NewGID == IndexMaps.InvalidID())
+					{
+						NewGID = Mesh.AllocateTriangleGroup();
+						IndexMaps.SetGroup(SourceGroupID, NewGID);
+					}
 				}
 			}
-		}
 
-		bool bCreatedNewVertex[3] = {false, false, false};
-		FIndex3i NewTri;
-		for (int j = 0; j < 3; ++j)
-		{
-			int SourceVID = Tri[j];
-			int NewVID = IndexMaps.GetNewVertex(SourceVID);
-			if (NewVID == IndexMaps.InvalidID())
-			{
-				bCreatedNewVertex[j] = true;
-				NewVID = Mesh.AppendVertex(*InSourceMesh, SourceVID);
-				IndexMaps.SetVertex(SourceVID, NewVID);
-			}
-			NewTri[j] = NewVID;
-		}
-
-		int NewTID = Mesh.AppendTriangle(NewTri, NewGID);
-
-		// conceivably this should never happen, but it did occur due to other mesh issues,
-		// and it can be handled here without much effort
-		if (NewTID < 0)
-		{
-			// append failed, try creating separate new vertices
+			bool bCreatedNewVertex[3] = { false, false, false };
+			FIndex3i NewTri;
 			for (int j = 0; j < 3; ++j)
 			{
-				if ( bCreatedNewVertex[j] == false )
+				int SourceVID = Tri[j];
+				int NewVID = IndexMaps.GetNewVertex(SourceVID);
+				if (NewVID == IndexMaps.InvalidID())
 				{
-					int SourceVID = Tri[j];
-					NewTri[j] = Mesh.AppendVertex(*InSourceMesh, SourceVID);
+					bCreatedNewVertex[j] = true;
+					NewVID = Mesh.AppendVertex(*InSourceMesh, SourceVID);
+					IndexMaps.SetVertex(SourceVID, NewVID);
 				}
+				NewTri[j] = NewVID;
 			}
-			NewTID = Mesh.AppendTriangle(NewTri, NewGID);
+
+			int NewTID = Mesh.AppendTriangle(NewTri, NewGID);
+
+			// conceivably this should never happen, but it did occur due to other mesh issues,
+			// and it can be handled here without much effort
+			if (NewTID < 0)
+			{
+				// append failed, try creating separate new vertices
+				for (int j = 0; j < 3; ++j)
+				{
+					if (bCreatedNewVertex[j] == false)
+					{
+						int SourceVID = Tri[j];
+						NewTri[j] = Mesh.AppendVertex(*InSourceMesh, SourceVID);
+					}
+				}
+				NewTID = Mesh.AppendTriangle(NewTri, NewGID);
+			}
+
+			if (NewTID >= 0)
+			{
+				IndexMaps.SetTriangle(SourceTID, NewTID);
+				AppendTriangleAttributes(InSourceMesh, SourceTID, &Mesh, NewTID, IndexMaps, UnusedInvalidResultAccumulator);
+			}
+			else
+			{
+				checkSlow(false);
+				// something has gone very wrong, skip this triangle
+			}
 		}
 
-		if ( NewTID >= 0 )
+		for (int Idx = 0; Idx < NumMeshes; Idx++)
 		{
-			IndexMaps.SetTriangle(SourceTID, NewTID);
-			AppendTriangleAttributes(InSourceMesh, SourceTID, &Mesh, NewTID, IndexMaps, UnusedInvalidResultAccumulator);
+			AppendVertexAttributes(InSourceMesh, &SplitMeshes[Idx], Mappings[Idx]);
 		}
-		else
-		{
-			checkSlow(false);
-			// something has gone very wrong, skip this triangle
-		}
-	}
 
-	for (int Idx = 0; Idx < NumMeshes; Idx++)
-	{
-		AppendVertexAttributes(InSourceMesh, &SplitMeshes[Idx], Mappings[Idx]);
-	}
-	
-	return true;
+		return true;
 	}
 }
 
 void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshActor, FVector PlaneOrigin,
-                                             FVector PlaneNormal,  float CutUVScale)
+	FVector PlaneNormal, float CutUVScale)
 {
 	auto Start = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
 
@@ -1093,7 +1106,7 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 	TDynamicMeshScalarTriangleAttribute<int>* SubObjectAttrib = new TDynamicMeshScalarTriangleAttribute<int>(&SourceMesh);
 	SubObjectAttrib->SetName(ObjectIndexAttribute);
 	SubObjectAttrib->Initialize(0);
-	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);	
+	SourceMesh.Attributes()->AttachAttribute(ObjectIndexAttribute, SubObjectAttrib);
 
 	// 从世界坐标转换到局部坐标
 	FTransform LocalToWorld = GetTransform();
@@ -1103,8 +1116,8 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 
 	// 使用相对更"原始"的MeshPlaneCut,可以保留更多信息
 	TSharedPtr<FDynamicMesh3> ResultMesh = MakeShared<FDynamicMesh3>();
-	ResultMesh->Copy(SourceMesh,true,true,true,true);
-	
+	ResultMesh->Copy(SourceMesh, true, true, true, true);
+
 	FMeshPlaneCut Cut(ResultMesh.Get(), LocalOrigin, LocalNormal);
 	Cut.UVScaleFactor = CutUVScale;
 	Cut.bSimplifyAlongNewEdges = false;
@@ -1116,14 +1129,14 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 		MaxSubObjectID = FMath::Max(MaxSubObjectID, SubObjectAttrib->GetValue(TID));
 	}
 
-	
-	Cut.CutWithoutDelete(true, 0, SubObjectAttrib, MaxSubObjectID+1);
-	Cut.HoleFill(ConstrainedDelaunayTriangulate<double>, true);	
+
+	Cut.CutWithoutDelete(true, 0, SubObjectAttrib, MaxSubObjectID + 1);
+	Cut.HoleFill(ConstrainedDelaunayTriangulate<double>, true);
 	Cut.TransferTriangleLabelsToHoleFillTriangles(SubObjectAttrib);
 
 	// 初始化/设置IsShell属性，该属性会不断往下传递
 	SetIsShell(*ResultMesh, Cut);
-	
+
 	// 根据三角形的SubObjectAttrib划分为两个SourceMesh
 	TArray<FDynamicMesh3> SplitMeshes;
 	bool bSucceeded = SplitMeshInternal::SplitMesh(ResultMesh.Get(), SplitMeshes, [SubObjectAttrib](int TID)
@@ -1131,37 +1144,37 @@ void ADynamicMeshBaseActor::AdvancedPlaneCut(ADynamicMeshBaseActor* OtherMeshAct
 			return SubObjectAttrib->GetValue(TID);
 		});
 
-	if(!bSucceeded)
+	if (!bSucceeded)
 		return;
-	
+
 	SplitMeshes[0].Attributes()->RemoveAttribute(ObjectIndexAttribute);
 	SplitMeshes[1].Attributes()->RemoveAttribute(ObjectIndexAttribute);
 
 	// 更新 "我的" Mesh
 	NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
 	EditMesh([&](FDynamicMesh3& MeshToUpdate)
-	{
-		MeshToUpdate = MoveTemp(SplitMeshes[0]);
-		RecomputeNormals(MeshToUpdate);
-	});
-	
+		{
+			MeshToUpdate = MoveTemp(SplitMeshes[0]);
+			RecomputeNormals(MeshToUpdate);
+		});
+
 
 	// 更新 "新的" Mesh
-	if(IsValid(OtherMeshActor) && SplitMeshes.Num()==2)
+	if (IsValid(OtherMeshActor) && SplitMeshes.Num() == 2)
 	{
 		OtherMeshActor->NormalsMode = EDynamicMeshActorNormalsMode::SplitNormals;
 		OtherMeshActor->SetActorLocation(this->GetActorLocation());
 		OtherMeshActor->SetActorRotation(this->GetActorRotation());
 		OtherMeshActor->EditMesh([&](FDynamicMesh3& MeshToUpdate)
-		{
-			MeshToUpdate = MoveTemp(SplitMeshes[1]);
-			RecomputeNormals(MeshToUpdate);
-		});
+			{
+				MeshToUpdate = MoveTemp(SplitMeshes[1]);
+				RecomputeNormals(MeshToUpdate);
+			});
 	}
 
 	auto End = FDateTime::Now().GetTimeOfDay().GetTotalMilliseconds();
 
-	UE_LOG(LogTemp, Warning, TEXT("Plane Cut cost : %f ms"), End-Start);
+	UE_LOG(LogTemp, Warning, TEXT("Plane Cut cost : %f ms"), End - Start);
 }
 
 UE_ENABLE_OPTIMIZATION
