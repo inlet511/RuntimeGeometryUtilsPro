@@ -30,5 +30,6 @@ MeshReduction参考
 - 添加了SimplifyMesh函数，可以选择简化的方式
   - 不能选择ESimplifyType::UEStandard，如果选择该选项，需要提供MeshDescription, 但目前提供MeshDescrition的方法有问题
 - 添加了导出Obj的功能
+- Updated for Unreal Engine 5.5
 
 

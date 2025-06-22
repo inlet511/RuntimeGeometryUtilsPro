@@ -16,7 +16,7 @@ namespace RTGUtils
 	 */
 	RUNTIMEGEOMETRYUTILS_API void UpdateStaticMeshFromDynamicMesh(
 		UStaticMesh* StaticMesh,
-		const FDynamicMesh3* Mesh);
+		const UE::Geometry::FDynamicMesh3* Mesh);
 
 
 
@@ -29,12 +29,12 @@ namespace RTGUtils
 	 */
 	RUNTIMEGEOMETRYUTILS_API void UpdatePMCFromDynamicMesh_SplitTriangles(
 		UProceduralMeshComponent* Component, 
-		FDynamicMesh3* Mesh,
+		UE::Geometry::FDynamicMesh3* Mesh,
 		bool bUseFaceNormals,
 		bool bInitializeUV0,
 		bool bInitializePerVertexColors,
 		bool bCreateCollision);
 
 
-	RUNTIMEGEOMETRYUTILS_API void FindAABounds(TAxisAlignedBox3<double>& ResultBounds, TArray<FVector> PointArray);
+	RUNTIMEGEOMETRYUTILS_API void FindAABounds(UE::Geometry::TAxisAlignedBox3<double>& ResultBounds, TArray<FVector> PointArray);
 }
